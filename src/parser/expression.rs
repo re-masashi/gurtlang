@@ -108,22 +108,21 @@ impl<'a> Parser<'a> {
                         loop {
                             match self.tokens.next().unwrap().0.unwrap() {
                                 Token::RParen => break,
-                                _=>{
+                                _ => {
                                     exprs.push(self.parse_expression());
                                     match self.tokens.peek().unwrap().0.as_ref().unwrap() {
-                                        Token::Comma => {
-                                            self.tokens.next()
-                                        },
-                                        Token::RParen => {
-                                            continue
-                                        },
+                                        Token::Comma => self.tokens.next(),
+                                        Token::RParen => continue,
 
-                                        _=>panic!("invalid token. no errors cuz im lazy {} {:?}", self.file, span)
+                                        _ => panic!(
+                                            "invalid token. no errors cuz im lazy {} {:?}",
+                                            self.file, span
+                                        ),
                                     };
                                 }
                             }
                         }
-                       (Expr::Tuple(exprs), span)
+                        (Expr::Tuple(exprs), span)
                     }
                     _ => {
                         self.errors.push(
@@ -153,18 +152,27 @@ impl<'a> Parser<'a> {
             Token::KeywordIf => return self.parse_if(span_expression),
 
             // unary ops
-            Token::Not => (Expr::UnOp {
-                expression: Box::new(self.parse_expression()),
-                unop: UnOp::Not,
-            }, span_expression.clone()),
-            Token::Plus => (Expr::UnOp {
-                expression: Box::new(self.parse_expression()),
-                unop: UnOp::Plus,
-            }, span_expression.clone()),
-            Token::Minus => (Expr::UnOp {
-                expression: Box::new(self.parse_expression()),
-                unop: UnOp::Minus,
-            }, span_expression.clone()),
+            Token::Not => (
+                Expr::UnOp {
+                    expression: Box::new(self.parse_expression()),
+                    unop: UnOp::Not,
+                },
+                span_expression.clone(),
+            ),
+            Token::Plus => (
+                Expr::UnOp {
+                    expression: Box::new(self.parse_expression()),
+                    unop: UnOp::Plus,
+                },
+                span_expression.clone(),
+            ),
+            Token::Minus => (
+                Expr::UnOp {
+                    expression: Box::new(self.parse_expression()),
+                    unop: UnOp::Minus,
+                },
+                span_expression.clone(),
+            ),
 
             Token::LBracket => panic!("arrays are unimplemented"),
 
@@ -181,7 +189,9 @@ impl<'a> Parser<'a> {
 
             match token.as_ref().unwrap() {
                 Token::LBracket => {
-                    let Some((_, span_brack)) = self.tokens.next() else {unreachable!()};
+                    let Some((_, span_brack)) = self.tokens.next() else {
+                        unreachable!()
+                    };
                     let index = self.parse_expression();
                     let Some((token, span_expression)) = self.tokens.next() else {
                         self.errors.push(
@@ -203,10 +213,13 @@ impl<'a> Parser<'a> {
                         return (Expr::Error, span_brack.clone());
                     };
                     if let Token::RBracket = token.as_ref().unwrap() {
-                        l_expr = (Expr::Index {
-                            array: Box::new(l_expr),
-                            index: Box::new(index),
-                        }, span_expression)
+                        l_expr = (
+                            Expr::Index {
+                                array: Box::new(l_expr),
+                                index: Box::new(index),
+                            },
+                            span_expression,
+                        )
                     } else {
                         self.errors.push(
                             Report::build(
@@ -311,62 +324,95 @@ impl<'a> Parser<'a> {
                             }
                         }
                     }
-                    l_expr = (Expr::Call {
-                        function: Box::new(l_expr),
-                        args,
-                    }, span_expression.clone());
+                    l_expr = (
+                        Expr::Call {
+                            function: Box::new(l_expr),
+                            args,
+                        },
+                        span_expression.clone(),
+                    );
                 } // call
                 Token::Dot => {
                     todo!()
                 } // method call or struct access
                 // assignments
                 Token::Assign => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::Assign {
-                        assign_op: AssignOp::Assign,
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::Assign {
+                            assign_op: AssignOp::Assign,
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                        },
+                        span_op,
+                    )
                 }
                 Token::AddAssign => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::Assign {
-                        assign_op: AssignOp::AddAssign,
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::Assign {
+                            assign_op: AssignOp::AddAssign,
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                        },
+                        span_op,
+                    )
                 }
                 Token::SubAssign => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::Assign {
-                        assign_op: AssignOp::SubAssign,
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::Assign {
+                            assign_op: AssignOp::SubAssign,
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                        },
+                        span_op,
+                    )
                 }
                 Token::MulAssign => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::Assign {
-                        assign_op: AssignOp::MulAssign,
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::Assign {
+                            assign_op: AssignOp::MulAssign,
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                        },
+                        span_op,
+                    )
                 }
                 Token::DivAssign => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::Assign {
-                        assign_op: AssignOp::DivAssign,
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::Assign {
+                            assign_op: AssignOp::DivAssign,
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                        },
+                        span_op,
+                    )
                 }
                 Token::ModAssign => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::Assign {
-                        assign_op: AssignOp::ModAssign,
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::Assign {
+                            assign_op: AssignOp::ModAssign,
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                        },
+                        span_op,
+                    )
                 }
 
                 _ => {
@@ -382,102 +428,162 @@ impl<'a> Parser<'a> {
 
             match token.as_ref().unwrap() {
                 Token::Plus => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::Add,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::Add,
+                        },
+                        span_op,
+                    )
                 }
                 Token::Minus => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::Sub,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::Sub,
+                        },
+                        span_op,
+                    )
                 }
                 Token::Mul => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::Mul,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::Mul,
+                        },
+                        span_op,
+                    )
                 }
                 Token::Div => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::Div,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::Div,
+                        },
+                        span_op,
+                    )
                 }
 
                 Token::Eq => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::Eq,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::Eq,
+                        },
+                        span_op,
+                    )
                 }
                 Token::NotEq => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::Add,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::Add,
+                        },
+                        span_op,
+                    )
                 }
                 Token::GreaterEq => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::GreaterEq,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::GreaterEq,
+                        },
+                        span_op,
+                    )
                 }
                 Token::LessEq => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::LessEq,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::LessEq,
+                        },
+                        span_op,
+                    )
                 }
 
                 Token::Or => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::Or,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::Or,
+                        },
+                        span_op,
+                    )
                 }
                 Token::Xor => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::Xor,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::Xor,
+                        },
+                        span_op,
+                    )
                 }
                 Token::And => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::And,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::And,
+                        },
+                        span_op,
+                    )
                 }
                 Token::Nor => {
-                    let Some((_, span_op)) = self.tokens.next() else {unreachable!()};
-                    l_expr = (Expr::BinOp {
-                        l_value: Box::new(l_expr),
-                        r_value: Box::new(self.parse_expression()),
-                        operator: BinOp::Nor,
-                    }, span_op)
+                    let Some((_, span_op)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    l_expr = (
+                        Expr::BinOp {
+                            l_value: Box::new(l_expr),
+                            r_value: Box::new(self.parse_expression()),
+                            operator: BinOp::Nor,
+                        },
+                        span_op,
+                    )
                 }
 
                 _x => break,
@@ -509,13 +615,18 @@ impl<'a> Parser<'a> {
             return (Expr::Error, span.clone());
         };
         if let Token::Variable(identifier) = token.unwrap() {
-            let Some((_, _span)) =  self.tokens.next() else { todo!() }; // eat '='
+            let Some((_, _span)) = self.tokens.next() else {
+                todo!()
+            }; // eat '='
             let (expr, expr_span) = self.parse_expression();
-            (Expr::Assign {
-                l_value: Box::new((Expr::Variable(identifier), var_span.clone())),
-                r_value: Box::new((expr, expr_span.clone())),
-                assign_op: AssignOp::Assign,
-            }, var_span.start..expr_span.end.clone())
+            (
+                Expr::Assign {
+                    l_value: Box::new((Expr::Variable(identifier), var_span.clone())),
+                    r_value: Box::new((expr, expr_span.clone())),
+                    assign_op: AssignOp::Assign,
+                },
+                var_span.start..expr_span.end.clone(),
+            )
         } else {
             let mut colors = ColorGenerator::new();
             let a = colors.next();
@@ -585,12 +696,14 @@ impl<'a> Parser<'a> {
                     .with_message("Empty `do` expressions are not allowed")
                     .finish(),
             );
-            let Some((_, span)) = self.tokens.next() else {todo!()}; // eat 'end'
+            let Some((_, span)) = self.tokens.next() else {
+                todo!()
+            }; // eat 'end'
             return (Expr::Error, span);
         }
 
         let mut span_expression = span_expression.clone();
-        
+
         loop {
             let Some((token, span_expression_inside)) = self.tokens.next() else {
                 self.errors.push(
@@ -654,25 +767,36 @@ impl<'a> Parser<'a> {
         let Some((token, _then_span)) = self.tokens.peek()
         // eat 'else'
         else {
-            return (Expr::IfElse {
-                condition,
-                if_branch,
-                else_branch: None,
-            }, then_span);
+            return (
+                Expr::IfElse {
+                    condition,
+                    if_branch,
+                    else_branch: None,
+                },
+                then_span,
+            );
         };
         if let Token::KeywordElse = token.as_ref().unwrap() {
-            let Some((_, span)) = self.tokens.next() else {unreachable!()};
-            return (Expr::IfElse {
-                condition,
-                if_branch,
-                else_branch: Some(Box::new(self.parse_expression())),
-            }, span.clone());
+            let Some((_, span)) = self.tokens.next() else {
+                unreachable!()
+            };
+            return (
+                Expr::IfElse {
+                    condition,
+                    if_branch,
+                    else_branch: Some(Box::new(self.parse_expression())),
+                },
+                span.clone(),
+            );
         } else {
-            return (Expr::IfElse {
-                condition,
-                if_branch,
-                else_branch: None,
-            }, span.clone());
+            return (
+                Expr::IfElse {
+                    condition,
+                    if_branch,
+                    else_branch: None,
+                },
+                span.clone(),
+            );
         }
     }
 }

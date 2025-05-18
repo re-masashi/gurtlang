@@ -1,5 +1,5 @@
-use std::vec::Vec;
 use std::ops::Range;
+use std::vec::Vec;
 
 #[derive(Debug)]
 pub enum ASTNode {
@@ -117,7 +117,7 @@ pub enum AssignOp {
 #[derive(Debug)]
 pub struct Function {
     pub name: String,
-    pub args: Vec<(String, Option<TypeAnnot>)>,
+    pub args: Vec<(String, Option<TypeAnnot>, Range<usize>)>,
     pub body: Box<(Expr, Range<usize>)>,
     pub return_type: Option<(TypeAnnot, Range<usize>)>,
 }
@@ -125,6 +125,7 @@ pub struct Function {
 #[derive(Debug)]
 pub struct Struct {
     pub name: String,
+    pub generics: Vec<(String, Range<usize>)>, // only boring types?
     pub fields: Vec<(String, TypeAnnot, Range<usize>)>,
 }
 

@@ -44,7 +44,7 @@ impl<'a> Parser<'a> {
                 _ => {
                     let (expr, span) = self.parse_expression();
                     tree.push((ASTNode::Expr((expr, span.clone())), span))
-                },
+                }
             }
         }
         return tree;

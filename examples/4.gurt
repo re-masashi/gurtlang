@@ -1,0 +1,4 @@
+struct Student
+	name string
+	age int
+end

@@ -8,6 +8,9 @@ use std::ops::Range;
 
 use ariadne::{Color, ColorGenerator, Fmt, Label, Report, ReportKind};
 
+type Arg = (String, Option<TypeAnnot>, Range<usize>);
+type ErrReport = (String, Range<usize>);
+
 pub fn function_syntax() -> String {
     format!(
         "\
@@ -87,9 +90,10 @@ impl<'a> Parser<'a> {
                 .with_code("EOF")
                 .with_label(
                     Label::new((self.file.clone(), span_function.clone()))
-                        .with_message(format!(
-                            "expected '(' name after fucntion name but reached end of file",
-                        ))
+                        .with_message(
+                            "expected '(' name after fucntion name but reached end of file"
+                                .to_string(),
+                        )
                         .with_color(ColorGenerator::new().next()),
                 )
                 .with_note(function_syntax())
@@ -174,7 +178,7 @@ impl<'a> Parser<'a> {
                     unreachable!()
                 };
                 let return_type = self.parse_type_annotation(span.clone()).unwrap();
-                return (
+                (
                     ASTNode::Function(Function {
                         name: fun_name,
                         args,
@@ -182,26 +186,24 @@ impl<'a> Parser<'a> {
                         return_type: Some((return_type, span)),
                     }),
                     span_function,
-                );
+                )
             }
-            _ => {
-                return (
-                    ASTNode::Function(Function {
-                        name: fun_name,
-                        args,
-                        body: Box::new(self.parse_expression()),
-                        return_type: None,
-                    }),
-                    span_function,
-                );
-            }
+            _ => (
+                ASTNode::Function(Function {
+                    name: fun_name,
+                    args,
+                    body: Box::new(self.parse_expression()),
+                    return_type: None,
+                }),
+                span_function,
+            ),
         }
     }
 
     pub fn parse_function_arg(
         &mut self,
         _span: Range<usize>,
-    ) -> Result<(String, Option<TypeAnnot>, Range<usize>), Report<'a, (String, Range<usize>)>> {
+    ) -> Result<Arg, Box<Report<'a, ErrReport>>> {
         let Some((token, span)) = self.tokens.next() else {
             self.errors.push(
                 Report::build(
@@ -211,9 +213,7 @@ impl<'a> Parser<'a> {
                 .with_code("EOF")
                 .with_label(
                     Label::new((self.file.clone(), _span))
-                        .with_message(format!(
-                            "expected a valid identifier as argument name but reached end of file",
-                        ))
+                        .with_message("expected a valid identifier as argument name but reached end of file".to_string())
                         .with_color(ColorGenerator::new().next()),
                 )
                 .with_note(function_syntax())
@@ -229,7 +229,7 @@ impl<'a> Parser<'a> {
         let arg_name = if let Token::Variable(ref arg_name) = token {
             arg_name
         } else {
-            return Err(
+            return Err(Box::new(
                 Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                     .with_code("EOF")
                     .with_label(
@@ -243,7 +243,7 @@ impl<'a> Parser<'a> {
                     .with_note(function_syntax())
                     .with_message("found unexpected token. expected a valid identifier.")
                     .finish(),
-            );
+            ));
         };
 
         let Some((token, _span)) = self.tokens.peek() else {
@@ -274,9 +274,9 @@ impl<'a> Parser<'a> {
             .with_message("found an argument with a type annotation in function definition. type annotations are not fully supported yet")
             .finish(),
         );
-            return Ok((arg_name.to_string(), Some(type_annot), span));
+            Ok((arg_name.to_string(), Some(type_annot), span))
         } else {
-            return Ok((arg_name.to_string(), None, span));
+            Ok((arg_name.to_string(), None, span))
         }
 
         // panic!("FUNCTION ARGS PARSING YET TO BE DONE")
@@ -285,22 +285,23 @@ impl<'a> Parser<'a> {
     pub fn parse_type_annotation(
         &mut self,
         _span: Range<usize>,
-    ) -> Result<TypeAnnot, Report<'a, (String, Range<usize>)>> {
+    ) -> Result<TypeAnnot, Box<Report<'a, ErrReport>>> {
         let Some((token, span)) = self.tokens.next() else {
-            return Err(
+            return Err(Box::new(
                 Report::build(ReportKind::Error, (self.file.clone(), _span.clone()))
                     .with_code("EOF")
                     .with_label(
                         Label::new((self.file.clone(), _span))
-                            .with_message(format!(
-                                "expected a valid type after colon but reached end of file",
-                            ))
+                            .with_message(
+                                "expected a valid type after colon but reached end of file"
+                                    .to_string(),
+                            )
                             .with_color(ColorGenerator::new().next()),
                     )
                     .with_note(function_syntax())
                     .with_message("reached end of file while trying to parse a type annotation")
                     .finish(),
-            );
+            ));
             // todo!()
         };
         let token = token.unwrap();
@@ -314,21 +315,23 @@ impl<'a> Parser<'a> {
             Token::Variable(ref var) if var == "float" => Ok(TypeAnnot::Float),
             Token::Variable(ref var) if var == "trait" => {
                 let Some((token, span)) = self.tokens.next() else {
-                    return Err(Report::build(
-                        ReportKind::Error,
-                        (self.file.clone(), span.clone()),
-                    )
-                    .with_code("EOF")
-                    .with_label(
-                        Label::new((self.file.clone(), span))
-                            .with_message(format!(
-                                "expected a valid type after colon but reached end of file",
-                            ))
-                            .with_color(ColorGenerator::new().next()),
-                    )
-                    .with_note(function_syntax())
-                    .with_message("reached end of file while trying to parse a type annotation")
-                    .finish());
+                    return Err(Box::new(
+                        Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
+                            .with_code("EOF")
+                            .with_label(
+                                Label::new((self.file.clone(), span))
+                                    .with_message(
+                                        "expected a valid type after colon but reached end of file"
+                                            .to_string(),
+                                    )
+                                    .with_color(ColorGenerator::new().next()),
+                            )
+                            .with_note(function_syntax())
+                            .with_message(
+                                "reached end of file while trying to parse a type annotation",
+                            )
+                            .finish(),
+                    ));
                 };
                 let token = token.unwrap();
                 match token {
@@ -408,6 +411,6 @@ impl<'a> Parser<'a> {
             ),
         };
 
-        type_annot
+        Ok(type_annot?)
     }
 }

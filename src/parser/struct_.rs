@@ -1,10 +1,10 @@
-use crate::ast::{ASTNode, Struct, TypeAnnot};
+use crate::ast::{ASTNode, Struct};
 use crate::lexer::Token;
 use crate::parser::Parser;
 
 use std::ops::Range;
 
-impl<'a> Parser<'a> {
+impl Parser<'_> {
     pub fn parse_struct(&mut self) -> (ASTNode, Range<usize>) {
         let Some((_token, span_struct)) = self.tokens.next() else {
             unreachable!()
@@ -43,10 +43,14 @@ impl<'a> Parser<'a> {
         }
 
         let Some((token, _span)) = self.tokens.peek() else {
-            return         (
-            ASTNode::Struct(Struct { name, fields, generics: vec![] }),
-            span_struct.start..span_name.end + 1,
-        )
+            return (
+                ASTNode::Struct(Struct {
+                    name,
+                    fields,
+                    generics: vec![],
+                }),
+                span_struct.start..span_name.end + 1,
+            );
             // todo!()
         };
         let token = token.as_ref().unwrap();
@@ -79,25 +83,34 @@ impl<'a> Parser<'a> {
                                 unreachable!()
                             };
                             if let Token::Variable(_v) = token.as_ref().unwrap() {
-                                let Some((Ok(Token::Variable(v)), var_span)) = self.tokens.next() else {
+                                let Some((Ok(Token::Variable(v)), var_span)) = self.tokens.next()
+                                else {
                                     panic!("invalid geneirc");
                                 };
-                                generics.push((v.to_string(), var_span))    
-                            }else{
+                                generics.push((v.to_string(), var_span))
+                            } else {
                                 panic!("invalid geneirc");
                             }
                         }
                     }
                 }
                 (
-                     ASTNode::Struct(Struct { name, fields, generics }),
-                     span_struct.start..span_name.end + 1,
-                 )
+                    ASTNode::Struct(Struct {
+                        name,
+                        fields,
+                        generics,
+                    }),
+                    span_struct.start..span_name.end + 1,
+                )
             }
-            _ =>          (
-            ASTNode::Struct(Struct { name, fields, generics: vec![] }),
-            span_struct.start..span_name.end + 1,
-        ),
+            _ => (
+                ASTNode::Struct(Struct {
+                    name,
+                    fields,
+                    generics: vec![],
+                }),
+                span_struct.start..span_name.end + 1,
+            ),
         }
 
         // todo!()

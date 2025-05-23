@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::sync::Arc;
 use std::vec::Vec;
 
 #[derive(Debug)]
@@ -62,6 +63,12 @@ pub enum Expr {
 
     Do {
         expressions: Vec<(Expr, Range<usize>)>,
+    },
+
+    Let {
+        var: String,
+        type_annot: Option<(TypeAnnot, Range<usize>)>,
+        value: Box<(Expr, Range<usize>)>,
     },
 
     IfElse {
@@ -144,4 +151,121 @@ pub enum TypeAnnot {
     },
     Tuple(Vec<TypeAnnot>),
     Trait(String),
+}
+
+#[derive(Debug)]
+pub enum Type {
+    Constructor {
+        name: String,
+        generics: Vec<Arc<Type>>,
+        traits: Vec<String>,
+    },
+    Variable(usize),
+    Trait(String),
+    Function {
+        params: Vec<Arc<Type>>,
+        return_type: Box<Arc<Type>>,
+    },
+    Tuple(Vec<Arc<Type>>),
+    Union(Vec<Arc<Type>>),
+}
+
+#[derive(Debug)]
+pub struct TypedExpr {
+    pub kind: TypedExprKind,
+    pub ty: Arc<Type>,
+    pub range: Range<usize>,
+}
+
+#[derive(Debug)]
+pub enum TypedExprKind {
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    String(String),
+
+    Variable(String),
+
+    Array {
+        elements: Vec<TypedExpr>,
+    },
+
+    Index {
+        array: Box<TypedExpr>,
+        index: Box<TypedExpr>,
+    },
+
+    Call {
+        function: Box<TypedExpr>,
+        args: Vec<TypedExpr>,
+    },
+
+    StructAccess {
+        struct_val: Box<TypedExpr>,
+        field_name: String,
+    },
+
+    MethodCall {
+        struct_val: Box<TypedExpr>,
+        method_name: String,
+        args: Vec<TypedExpr>,
+    },
+
+    BinOp {
+        operator: BinOp,
+        l_value: Box<TypedExpr>,
+        r_value: Box<TypedExpr>,
+    },
+    Assign {
+        l_value: Box<TypedExpr>,
+        r_value: Box<TypedExpr>,
+        assign_op: AssignOp,
+    },
+
+    UnOp {
+        unop: UnOp,
+        expression: Box<TypedExpr>,
+    },
+
+    Do {
+        expressions: Vec<TypedExpr>,
+    },
+
+    Let {
+        var: String,
+        value: Box<TypedExpr>,
+    },
+
+    IfElse {
+        condition: Box<TypedExpr>,
+        if_branch: Box<TypedExpr>,
+        else_branch: Option<Box<TypedExpr>>,
+    },
+
+    Tuple(Vec<TypedExpr>),
+
+    Error, // dummy node for error recovery
+}
+
+#[derive(Debug)]
+pub enum TypedASTNode {
+    Expr((TypedExpr, Range<usize>)),
+    Function(TypedFunction),
+    Struct(TypedStruct),
+    Error, // dummy node for error recovery
+}
+
+#[derive(Debug)]
+pub struct TypedFunction {
+    pub name: String,
+    pub args: Vec<(String, Arc<Type>, Range<usize>)>,
+    pub body: Box<(TypedExpr, Range<usize>)>,
+    pub return_type: Arc<(Type, Range<usize>)>,
+}
+
+#[derive(Debug)]
+pub struct TypedStruct {
+    pub name: String,
+    pub generics: Vec<(String, Range<usize>)>, // only boring types?
+    pub fields: Vec<(String, Arc<Type>, Range<usize>)>,
 }

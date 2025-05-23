@@ -19,7 +19,7 @@ use std::ops::Range;
 // const PRECEDENCE_OR: u8 = 7;
 // const PRECEDENCE_ASSIGN: u8 = 6;
 
-impl<'a> Parser<'a> {
+impl Parser<'_> {
     // fn get_infix_precedence(&self, token: &Token) -> (u8, u8) {
     //     match token {
     //         // Postfix
@@ -270,11 +270,8 @@ impl<'a> Parser<'a> {
                                 );
                             return (Expr::Error, span_expression);
                         };
-                        match token.unwrap() {
-                            Token::RParen => {
-                                break;
-                            }
-                            _ => {}
+                        if token.unwrap() == Token::RParen {
+                            break;
                         }
                         args.push(self.parse_expression());
                         let Some((token, span_expression)) = self.tokens.next() else {
@@ -615,17 +612,25 @@ impl<'a> Parser<'a> {
             return (Expr::Error, span.clone());
         };
         if let Token::Variable(identifier) = token.unwrap() {
-            let Some((_, _span)) = self.tokens.next() else {
+            let Some((token, span)) = self.tokens.next() else {
                 todo!()
             }; // eat '='
+            let mut type_annot = None;
+            match token.unwrap() {
+                Token::Colon => {
+                    type_annot = Some((self.parse_type_annotation(span.clone()).unwrap(), span))
+                }
+                Token::Assign => {}
+                _ => panic!("invalid"),
+            }
             let (expr, expr_span) = self.parse_expression();
             (
-                Expr::Assign {
-                    l_value: Box::new((Expr::Variable(identifier), var_span.clone())),
-                    r_value: Box::new((expr, expr_span.clone())),
-                    assign_op: AssignOp::Assign,
+                Expr::Let {
+                    var: identifier,
+                    type_annot,
+                    value: Box::new((expr, expr_span.clone())),
                 },
-                var_span.start..expr_span.end.clone(),
+                var_span.start..expr_span.end,
             )
         } else {
             let mut colors = ColorGenerator::new();
@@ -780,23 +785,23 @@ impl<'a> Parser<'a> {
             let Some((_, span)) = self.tokens.next() else {
                 unreachable!()
             };
-            return (
+            (
                 Expr::IfElse {
                     condition,
                     if_branch,
                     else_branch: Some(Box::new(self.parse_expression())),
                 },
                 span.clone(),
-            );
+            )
         } else {
-            return (
+            (
                 Expr::IfElse {
                     condition,
                     if_branch,
                     else_branch: None,
                 },
                 span.clone(),
-            );
+            )
         }
     }
 }

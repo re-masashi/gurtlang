@@ -47,7 +47,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        return tree;
+        tree
     }
 
     pub fn report_errors(&self) {

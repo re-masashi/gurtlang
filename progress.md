@@ -1,4 +1,4 @@
-# progress.md
+# progress since 12th May
 
 Day 1
 Designed the AST
@@ -19,3 +19,4 @@ Added function and type annotation parsing.
 
 Day 6
 Added type annotation parsing and struct parsing
+Added struct generics

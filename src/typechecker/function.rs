@@ -1,0 +1,45 @@
+#![allow(unused_imports)]
+
+use std::ops::Range;
+use std::sync::Arc;
+
+use crate::ast::{
+    BinOp,
+    AssignOp,
+    ASTNode, Expr, Function, Struct, Type, TypeAnnot, TypedASTNode, TypedExpr, TypedExprKind,
+    TypedFunction, TypedStruct,
+};
+use crate::typechecker::TypeEnv;
+use crate::{t_bool, t_float, t_int, t_list, t_string, tvar, t_unit};
+
+impl TypeEnv<'_> {
+    pub fn function_to_typed_function(&mut self, function: (&Function, &Range<usize>)) -> (TypedFunction, Range<usize>) {
+        let (function, fun_span) = function;
+        let Function {
+            name, args, body, return_type } = function;
+        let typed_args = args.into_iter().map(|(argname, typeannot, range)| {
+            match typeannot {
+                Some(ty) => (argname.to_string(), self.type_annot_to_type(ty), range.clone()),
+                None => {
+                    self.insert_var(argname.clone(), tvar!(self.variables.len() + 1));
+                    (argname.to_string(), tvar!(self.variables.len()), range.clone())
+                },
+            }
+        }).collect::<Vec<_>>();
+        let (body, body_span) = &**body;
+        let typed_body = (self.expr_to_typed_expr((body, body_span)), body_span.clone());
+
+        let typed_return_type = match return_type {
+            Some((return_type, span)) => (self.type_annot_to_type(return_type), span.clone()),
+            None => {
+                (typed_body.0.ty.clone(), typed_body.0.range.clone())
+            },
+        };
+        (TypedFunction {
+            args: typed_args,
+            body: Box::new(typed_body),
+            name: name.to_string(),
+            return_type: typed_return_type,
+        }, fun_span.clone())
+    }
+}

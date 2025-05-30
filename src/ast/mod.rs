@@ -104,14 +104,14 @@ pub enum BinOp {
     Nor,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UnOp {
     Plus,
     Minus,
     Not,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AssignOp {
     Assign,
     AddAssign,
@@ -168,6 +168,7 @@ pub enum Type {
     },
     Tuple(Vec<Arc<Type>>),
     Union(Vec<Arc<Type>>),
+    Unit,
 }
 
 #[derive(Debug)]
@@ -260,7 +261,7 @@ pub struct TypedFunction {
     pub name: String,
     pub args: Vec<(String, Arc<Type>, Range<usize>)>,
     pub body: Box<(TypedExpr, Range<usize>)>,
-    pub return_type: Arc<(Type, Range<usize>)>,
+    pub return_type: (Arc<Type>, Range<usize>),
 }
 
 #[derive(Debug)]

@@ -1,4 +1,5 @@
 pub mod convert;
+pub mod function;
 
 use ariadne::Report;
 use ariadne::Source;
@@ -65,6 +66,13 @@ impl TypeEnv<'_> {
 macro_rules! tvar {
     ($i:expr) => {
         Arc::new(Type::Variable($i))
+    };
+}
+
+#[macro_export]
+macro_rules! t_unit {
+    () => {
+        Arc::new(Type::Unit)
     };
 }
 

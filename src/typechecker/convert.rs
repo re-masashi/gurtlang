@@ -4,11 +4,13 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::ast::{
+    BinOp,
+    AssignOp,
     ASTNode, Expr, Function, Struct, Type, TypeAnnot, TypedASTNode, TypedExpr, TypedExprKind,
     TypedFunction, TypedStruct,
 };
 use crate::typechecker::TypeEnv;
-use crate::{t_bool, t_float, t_int, t_list, t_string, tvar};
+use crate::{t_bool, t_float, t_int, t_list, t_string, tvar, t_unit};
 
 impl TypeEnv<'_> {
     pub fn ast_to_typed_ast(&mut self, _ast: Vec<ASTNode>) -> Vec<TypedASTNode> {
@@ -24,7 +26,7 @@ impl TypeEnv<'_> {
         }
     }
 
-    pub fn expr_to_typed_expr(&mut self, expr: (&Expr, Range<usize>)) -> TypedExpr {
+    pub fn expr_to_typed_expr(&mut self, expr: (&Expr, &Range<usize>)) -> TypedExpr {
         let (expr, span) = expr;
         let (exprkind, ty) = match expr {
             Expr::Bool(b) => (TypedExprKind::Bool(*b), t_bool!()),
@@ -47,7 +49,7 @@ impl TypeEnv<'_> {
                     // let first_elem = &elements[0];
                     let mut new_elems = vec![];
                     for elem in elements {
-                        let typed = self.expr_to_typed_expr((&elem.0, elem.1.clone()));
+                        let typed = self.expr_to_typed_expr((&elem.0, &elem.1));
                         new_elems.push(typed);
                     }
                     let ty = &new_elems[0].ty.clone();
@@ -64,8 +66,8 @@ impl TypeEnv<'_> {
                 let (expr, _span) = &**array;
                 let (index, span) = &**index;
 
-                let typed_array = self.expr_to_typed_expr((&expr, span.clone()));
-                let typed_index = self.expr_to_typed_expr((&index, span.clone()));
+                let typed_array = self.expr_to_typed_expr((&expr, span));
+                let typed_index = self.expr_to_typed_expr((&index, span));
 
                 match &*typed_array.ty.clone() {
                     Type::Constructor {
@@ -84,7 +86,7 @@ impl TypeEnv<'_> {
             }
             Expr::Call { function, args } => {
                 let (fun, span) = &**function;
-                let typed_fun = self.expr_to_typed_expr((&fun, span.clone()));
+                let typed_fun = self.expr_to_typed_expr((&fun, span));
 
                 match &*typed_fun.ty.clone() {
                     Type::Variable(_) => {
@@ -92,7 +94,7 @@ impl TypeEnv<'_> {
                             .iter()
                             .map(|arg| {
                                 let (arg, span) = &*arg;
-                                self.expr_to_typed_expr((arg, span.clone()))
+                                self.expr_to_typed_expr((arg, span))
                             })
                             .collect::<Vec<_>>();
                         todo!()
@@ -103,7 +105,7 @@ impl TypeEnv<'_> {
                             .iter()
                             .map(|arg| {
                                 let (arg, span) = &*arg;
-                                self.expr_to_typed_expr((arg, span.clone()))
+                                self.expr_to_typed_expr((arg, span))
                             })
                             .collect::<Vec<_>>();
                         (TypedExprKind::Call {function: Box::new(typed_fun), args: new_args}, *return_type.clone())
@@ -114,22 +116,175 @@ impl TypeEnv<'_> {
             Expr::StructAccess {
                 struct_val: _,
                 field_name: _,
-            } => todo!(),
-            Expr::MethodCall { .. } => todo!(),
-            Expr::BinOp { .. } => todo!(),
-            Expr::UnOp { .. } => todo!(),
-            Expr::Assign { .. } => todo!(),
-            Expr::Do { .. } => todo!(),
-            Expr::Let { .. } => todo!(),
-            Expr::IfElse { .. } => todo!(),
-            Expr::Tuple(_) => todo!(),
+            } => {
+                todo!()
+            },
+            Expr::MethodCall { .. } => todo!(), // needs structs implemented
+            Expr::BinOp { operator, l_value, r_value } => {
+                let (l_expr, l_span) = &**l_value;
+                let l_value_typed = self.expr_to_typed_expr((l_expr, l_span));
 
-            _ => todo!(),
+                let (r_expr, r_span) = &**r_value;
+                let r_value_typed = self.expr_to_typed_expr((r_expr, r_span));
+
+                let ty = match (operator, &*l_value_typed.ty, &*l_value_typed.ty) {
+                    (BinOp::Add, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "int" && name_r == "int" =>{
+                        t_int!()
+                    },
+                    (BinOp::Add, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "float" && name_r == "int" => {
+                        t_float!()
+                    }
+                    (BinOp::Add, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "int" && name_r == "float" => {
+                        t_float!()
+                    },
+                    (BinOp::Add, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "string" || name_r == "string" => {
+                        t_string!()
+                    },
+
+                    (BinOp::Sub, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "int" && name_r == "int" =>{
+                        t_int!()
+                    },
+                    (BinOp::Sub, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "float" && name_r == "int" => {
+                        t_float!()
+                    }
+                    (BinOp::Sub, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "int" && name_r == "float" => {
+                        t_float!()
+                    },
+
+                    (BinOp::Mul, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "int" && name_r == "int" =>{
+                        t_int!()
+                    },
+                    (BinOp::Mul, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "float" && name_r == "int" => {
+                        t_float!()
+                    }
+                    (BinOp::Mul, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "int" && name_r == "float" => {
+                        t_float!()
+                    },
+                    (BinOp::Mul, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if (name_l == "string" && name_r == "int") || (name_l == "int" && name_r == "string") => {
+                        t_string!()
+                    },
+
+                    (BinOp::Div, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "int" && name_r == "int" =>{
+                        t_float!()
+                    },
+                    (BinOp::Div, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "float" && name_r == "int" => {
+                        t_float!()
+                    }
+                    (BinOp::Div, Type::Constructor{name: name_l, ..}, Type::Constructor{name: name_r, ..}) if name_l == "int" && name_r == "float" => {
+                        t_float!()
+                    },
+
+                    _ => todo!()
+                };
+
+                (TypedExprKind::BinOp {
+                    operator: operator.clone(),
+                    l_value: Box::new(l_value_typed),
+                    r_value: Box::new(r_value_typed),
+                }, ty.clone())
+            },
+            Expr::UnOp { unop, expression } => {
+                let (expr, span) = &**expression;
+                let typed_expr = self.expr_to_typed_expr((expr, span));
+                let ty = typed_expr.ty.clone();
+                (TypedExprKind::UnOp {
+                    unop: unop.clone(),
+                    expression: Box::new(typed_expr),
+                }, ty)
+            },
+            Expr::Assign { l_value, r_value, assign_op} => {
+                let (l_expr, l_span) = &**l_value;
+                let l_value_typed = self.expr_to_typed_expr((l_expr, l_span));
+
+                let (r_expr, r_span) = &**r_value;
+                let r_value_typed = self.expr_to_typed_expr((r_expr, r_span));
+
+                // let _ty = match (assign_op, &*l_value_typed.ty, &*l_value_typed.ty) {
+                //     (AssignOp::Assign, Type::Variable(_), Type::Variable(_)) => {
+
+                //     }
+                //     _=>todo!()
+                // };
+
+                let ty = r_value_typed.ty.clone();
+
+                (TypedExprKind::Assign {
+                    assign_op: assign_op.clone(),
+                    l_value: Box::new(l_value_typed),
+                    r_value: Box::new(r_value_typed),
+
+                }, ty.clone())
+            },
+            Expr::Do { expressions } => {
+                let mut typed_exprs = vec![];
+                for expression in expressions {
+                    let (expr, span) = expression;
+                    typed_exprs.push(self.expr_to_typed_expr((expr, span)));
+                }
+                let Some(ex) = typed_exprs.last() else {todo!()};
+                let ty = ex.ty.clone();
+                (TypedExprKind::Do {expressions: typed_exprs}, ty)
+            },
+            Expr::Let { var: _, type_annot, value} => {
+                match type_annot {
+                    Some(ty) => {
+                        let (ty, _r) = ty;
+                        let _annotated_type = self.type_annot_to_type(ty);
+                            
+                        let (val, span) = &**value;
+
+                        let _typed_val =
+                            self.expr_to_typed_expr((val, span));
+                    },
+                    None => todo!(),
+                }
+                todo!()
+            },
+            Expr::IfElse { condition, if_branch, else_branch } => {
+                let (condition, condition_span) = &**condition;
+                let (if_branch, if_branch_span) = &**if_branch;
+
+                let typed_condition = self.expr_to_typed_expr((condition, condition_span));
+                let typed_if_branch = self.expr_to_typed_expr((if_branch, if_branch_span));
+
+                match else_branch {
+                    Some(else_branch) => {
+                        let ty = typed_if_branch.ty.clone();
+                        let (else_branch, else_branch_span) = &**else_branch;
+                        let typed_else_branch = self.expr_to_typed_expr((else_branch, else_branch_span));
+                        (TypedExprKind::IfElse { 
+                            condition: Box::new(typed_condition),
+                            if_branch: Box::new(typed_if_branch),
+                            else_branch: Some(Box::new(typed_else_branch)),
+                        }, ty)
+                    }
+                    None => {
+                        (TypedExprKind::IfElse { 
+                            condition: Box::new(typed_condition),
+                            if_branch: Box::new(typed_if_branch),
+                            else_branch: None,
+                        }, t_unit!())
+                    }
+                }
+            },
+            Expr::Tuple(expressions) => {
+                let mut typed_exprs = vec![];
+                let mut types = vec![];
+
+                for expression in expressions {
+                    let (expr, span) = expression;
+                    let typed = self.expr_to_typed_expr((expr, span));
+                    types.push(typed.ty.clone());
+                    typed_exprs.push(typed);
+                }
+                (TypedExprKind::Tuple(typed_exprs), Arc::new(Type::Tuple(types)))
+            },
+            Expr::Error => unreachable!(),
         };
         TypedExpr {
             kind: exprkind,
             ty,
-            range: span,
+            range: span.clone(),
         }
     }
 

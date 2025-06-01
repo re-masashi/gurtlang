@@ -13,11 +13,11 @@ use crate::typechecker::TypeEnv;
 use crate::{t_bool, t_float, t_int, t_list, t_string, tvar, t_unit};
 
 impl TypeEnv<'_> {
-    pub fn ast_to_typed_ast(&mut self, _ast: Vec<ASTNode>) -> Vec<TypedASTNode> {
-        todo!()
+    pub fn ast_to_typed_ast(&mut self, ast: Vec<ASTNode>, _span: &Range<usize>) -> Vec<TypedASTNode> {
+        ast.into_iter().map(|node| self.node_to_typed_node(node, _span)).collect()
     }
 
-    pub fn node_to_typed_node(&mut self, node: ASTNode) -> TypedASTNode {
+    pub fn node_to_typed_node(&mut self, node: ASTNode, span: &Range<usize>) -> TypedASTNode {
         match node {
             ASTNode::Error => unreachable!(),
             ASTNode::Expr(expr) => {
@@ -26,14 +26,13 @@ impl TypeEnv<'_> {
                 TypedASTNode::Expr((typed_expr, span))
             },
             ASTNode::Function(func) => {
-                let span = func.body.1.clone();
-                let (typed_fun, _) = self.function_to_typed_function((&func, &span));
-                TypedASTNode::Function(typed_fun)
+                let (typed_fun, span) = self.function_to_typed_function((&func, &span));
+                TypedASTNode::Function((typed_fun, span))
             },
             ASTNode::Struct(struct_) => {
                 let dummy_span = 0..0; // Dummy span since structs don't have spans
-                let (typed_struct, _) = self.struct_to_typed_struct((&struct_, &dummy_span));
-                TypedASTNode::Struct(typed_struct)
+                let (typed_struct, span) = self.struct_to_typed_struct((&struct_, &dummy_span));
+                TypedASTNode::Struct((typed_struct, span))
             }
         }
     }
@@ -237,21 +236,24 @@ impl TypeEnv<'_> {
                 let ty = ex.ty.clone();
                 (TypedExprKind::Do {expressions: typed_exprs}, ty)
             },
-            Expr::Let { var: _, type_annot, value} => {
-                match type_annot {
-                    Some(ty) => {
-                        let (ty, _r) = ty;
-                        let _annotated_type = self.type_annot_to_type(ty);
-                            
-                        let (val, span) = &**value;
+            Expr::Let { var, type_annot, value } => {
+                let (val_expr, val_span) = &**value;
+                let typed_val = self.expr_to_typed_expr((val_expr, val_span));
+                
+                let var_ty = match type_annot {
+                    Some((annot, _)) => self.type_annot_to_type(annot),
+                    None => typed_val.ty.clone(),
+                };
 
-                        let _typed_val =
-                            self.expr_to_typed_expr((val, span));
-                    },
-                    None => todo!(),
-                }
-                todo!()
-            },
+                let ty = typed_val.ty.clone();
+                
+                self.insert_var(var.clone(), var_ty.clone());
+                
+                (TypedExprKind::Let { 
+                    var: var.clone(), 
+                    value: Box::new(typed_val) 
+                }, ty)
+            }
             Expr::IfElse { condition, if_branch, else_branch } => {
                 let (condition, condition_span) = &**condition;
                 let (if_branch, if_branch_span) = &**if_branch;

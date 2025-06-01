@@ -251,8 +251,8 @@ pub enum TypedExprKind {
 #[derive(Debug)]
 pub enum TypedASTNode {
     Expr((TypedExpr, Range<usize>)),
-    Function(TypedFunction),
-    Struct(TypedStruct),
+    Function((TypedFunction, Range<usize>)),
+    Struct((TypedStruct, Range<usize>)),
     Error, // dummy node for error recovery
 }
 

@@ -45,7 +45,7 @@ impl Parser<'_> {
         let Some((token, _span)) = self.tokens.peek() else {
             return (
                 ASTNode::Struct(Struct {
-                    name,
+                    name: (name, span_name.clone()),
                     fields,
                     generics: vec![],
                 }),
@@ -96,7 +96,7 @@ impl Parser<'_> {
                 }
                 (
                     ASTNode::Struct(Struct {
-                        name,
+                        name: (name, span_name.clone()),
                         fields,
                         generics,
                     }),
@@ -105,7 +105,7 @@ impl Parser<'_> {
             }
             _ => (
                 ASTNode::Struct(Struct {
-                    name,
+                    name: (name, span_name.clone()),
                     fields,
                     generics: vec![],
                 }),

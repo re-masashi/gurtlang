@@ -1,5 +1,6 @@
 pub mod convert;
 pub mod function;
+pub mod struct_;
 
 use ariadne::Report;
 use ariadne::Source;

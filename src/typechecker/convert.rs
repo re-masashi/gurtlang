@@ -20,9 +20,21 @@ impl TypeEnv<'_> {
     pub fn node_to_typed_node(&mut self, node: ASTNode) -> TypedASTNode {
         match node {
             ASTNode::Error => unreachable!(),
-            ASTNode::Expr(_) => todo!(),
-            ASTNode::Function(_) => todo!(),
-            ASTNode::Struct(_) => todo!(),
+            ASTNode::Expr(expr) => {
+                let (expr, span) = expr;
+                let typed_expr = self.expr_to_typed_expr((&expr, &span));
+                TypedASTNode::Expr((typed_expr, span))
+            },
+            ASTNode::Function(func) => {
+                let span = func.body.1.clone();
+                let (typed_fun, _) = self.function_to_typed_function((&func, &span));
+                TypedASTNode::Function(typed_fun)
+            },
+            ASTNode::Struct(struct_) => {
+                let dummy_span = 0..0; // Dummy span since structs don't have spans
+                let (typed_struct, _) = self.struct_to_typed_struct((&struct_, &dummy_span));
+                TypedASTNode::Struct(typed_struct)
+            }
         }
     }
 
@@ -90,15 +102,15 @@ impl TypeEnv<'_> {
 
                 match &*typed_fun.ty.clone() {
                     Type::Variable(_) => {
-                        let _new_args = args
+                        let new_args = args
                             .iter()
                             .map(|arg| {
                                 let (arg, span) = &*arg;
                                 self.expr_to_typed_expr((arg, span))
                             })
                             .collect::<Vec<_>>();
-                        todo!()
-                        // (TypedExprKind::Call {function: Box::new(typed_fun), args: new_args},)
+                        let ty = typed_fun.ty.clone();
+                        (TypedExprKind::Call {function: Box::new(typed_fun), args: new_args}, ty)
                     }
                     Type::Function { params: _, return_type } => {
                         let new_args = args

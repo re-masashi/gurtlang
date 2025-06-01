@@ -131,7 +131,7 @@ pub struct Function {
 
 #[derive(Debug)]
 pub struct Struct {
-    pub name: String,
+    pub name: (String, Range<usize>),
     pub generics: Vec<(String, Range<usize>)>, // only boring types?
     pub fields: Vec<(String, TypeAnnot, Range<usize>)>,
 }

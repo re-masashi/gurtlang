@@ -2,8 +2,7 @@ pub mod convert;
 pub mod function;
 pub mod struct_;
 
-use ariadne::Report;
-use ariadne::Source;
+use ariadne::{Report, Source};
 
 use std::collections::HashMap;
 use std::fs;

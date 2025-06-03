@@ -7,7 +7,7 @@ use logos::Logos;
 use std::fs;
 
 fn main() {
-    let filepath = "examples/3.gurt".to_string();
+    let filepath = "examples/5.gurt".to_string();
 
     let contents =
         fs::read_to_string(&filepath).expect("Should have been able to read the file :/");

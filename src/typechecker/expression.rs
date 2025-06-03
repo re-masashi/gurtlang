@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::ast::{
     ASTNode, AssignOp, BinOp, Expr, Function, Struct, Type, TypeAnnot, TypedASTNode, TypedExpr,
-    TypedExprKind, TypedFunction, TypedStruct,
+    TypedExprKind, TypedFunction, TypedStruct, UnOp,
 };
 use crate::typechecker::{TypeEnv, type_annot_to_type};
 use crate::{t_bool, t_float, t_int, t_list, t_string, t_unit, tvar};
@@ -59,11 +59,26 @@ impl TypeEnv<'_> {
                         TypedExprKind::Array { elements: vec![] },
                         t_list!(tvar!(self.variables.len() + 1)),
                     )
+                } else if elements.len() == 1 {
+                    let (elem, span) = &elements[0];
+                    let new_elem = self.expr_to_typed_expr((elem, span));
+                    let ty = new_elem.ty.clone();
+                    (
+                        TypedExprKind::Array {
+                            elements: vec![new_elem],
+                        },
+                        ty.clone(),
+                    )
                 } else {
-                    // let first_elem = &elements[0];
-                    let mut new_elems = vec![];
-                    for elem in elements {
+                    let (first_elem, first_span) = &elements[0];
+                    let new_first_elem = self.expr_to_typed_expr((first_elem, first_span));
+
+                    let val_ty = new_first_elem.ty.clone();
+                    let val_span = new_first_elem.range.clone();
+                    let mut new_elems = vec![new_first_elem];
+                    for elem in &elements[1..] {
                         let typed = self.expr_to_typed_expr((&elem.0, &elem.1));
+                        self.unify(val_ty.clone(), typed.ty.clone(), &val_span, &typed.range);
                         new_elems.push(typed);
                     }
                     let ty = &new_elems[0].ty.clone();
@@ -268,7 +283,15 @@ impl TypeEnv<'_> {
                         t_float!()
                     }
 
-                    _ => todo!(),
+                    _ => {
+                        self.unify(
+                            l_value_typed.ty.clone(),
+                            r_value_typed.ty.clone(),
+                            l_span,
+                            r_span,
+                        );
+                        l_value_typed.ty.clone()
+                    }
                 };
 
                 (
@@ -284,6 +307,9 @@ impl TypeEnv<'_> {
                 let (expr, span) = &**expression;
                 let typed_expr = self.expr_to_typed_expr((expr, span));
                 let ty = typed_expr.ty.clone();
+                if matches!(unop, UnOp::Not) {
+                    self.unify(ty.clone(), t_bool!(), span, span);
+                }
                 (
                     TypedExprKind::UnOp {
                         unop: unop.clone(),
@@ -323,6 +349,13 @@ impl TypeEnv<'_> {
 
                 let ty = r_value_typed.ty.clone();
 
+                self.unify(
+                    l_value_typed.ty.clone(),
+                    r_value_typed.ty.clone(),
+                    l_span,
+                    r_span,
+                );
+
                 (
                     TypedExprKind::Assign {
                         assign_op: assign_op.clone(),
@@ -357,14 +390,16 @@ impl TypeEnv<'_> {
                 let (val_expr, val_span) = &**value;
                 let typed_val = self.expr_to_typed_expr((val_expr, val_span));
 
-                let var_ty = match type_annot {
-                    Some((annot, _)) => type_annot_to_type(annot),
-                    None => typed_val.ty.clone(),
+                let (var_ty, var_span) = match type_annot {
+                    Some((annot, span)) => (type_annot_to_type(annot), span),
+                    None => (typed_val.ty.clone(), val_span),
                 };
 
                 let ty = typed_val.ty.clone();
 
                 self.insert_var(var.clone(), var_ty.clone());
+
+                self.unify(var_ty, ty.clone(), val_span, var_span);
 
                 (
                     TypedExprKind::Let {
@@ -385,12 +420,25 @@ impl TypeEnv<'_> {
                 let typed_condition = self.expr_to_typed_expr((condition, condition_span));
                 let typed_if_branch = self.expr_to_typed_expr((if_branch, if_branch_span));
 
+                self.unify(
+                    typed_condition.ty.clone(),
+                    t_bool!(),
+                    condition_span,
+                    condition_span,
+                );
+
                 match else_branch {
                     Some(else_branch) => {
                         let ty = typed_if_branch.ty.clone();
                         let (else_branch, else_branch_span) = &**else_branch;
                         let typed_else_branch =
                             self.expr_to_typed_expr((else_branch, else_branch_span));
+                        self.unify(
+                            typed_if_branch.ty.clone(),
+                            typed_else_branch.ty.clone(),
+                            if_branch_span,
+                            else_branch_span,
+                        );
                         (
                             TypedExprKind::IfElse {
                                 condition: Box::new(typed_condition),

@@ -1,6 +1,7 @@
 pub mod expression;
 pub mod function;
 pub mod struct_;
+pub mod unify;
 
 use ariadne::{Report, ReportKind, Source};
 
@@ -24,6 +25,7 @@ pub struct StructTy {
 pub struct TypeEnv<'a> {
     pub variables: HashMap<String, Arc<Type>>,
     pub structs: HashMap<String, Arc<StructTy>>,
+    substitutions: HashMap<usize, Arc<Type>>,
     errors: Vec<Error<'a>>,
     file: String,
 }
@@ -34,6 +36,7 @@ impl TypeEnv<'_> {
             variables: HashMap::new(),
             structs: HashMap::new(),
             errors: vec![],
+            substitutions: HashMap::new(),
             file,
         }
     }
@@ -158,6 +161,33 @@ macro_rules! t_list {
             traits: vec!["Iterable".to_string()],
         })
     };
+}
+
+fn type_string(ty: &Type) -> String {
+    match ty {
+        Type::Variable(i) => format!("?T{}", i),
+        Type::Constructor { name, generics, .. } if generics.is_empty() => name.clone(),
+        Type::Constructor { name, generics, .. } => {
+            let generics = generics
+                .iter()
+                .map(|t| type_string(t))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{}<{}>", name, generics)
+        }
+        Type::Function {
+            params,
+            return_type,
+        } => {
+            let params = params
+                .iter()
+                .map(|t| type_string(t))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({}) -> {}", params, type_string(return_type))
+        }
+        _ => format!("{:?}", ty),
+    }
 }
 
 pub fn type_annot_to_type(type_annot: &TypeAnnot) -> Arc<Type> {

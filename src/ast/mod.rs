@@ -153,7 +153,7 @@ pub enum TypeAnnot {
     Trait(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Type {
     Constructor {
         name: String,

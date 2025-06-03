@@ -2,14 +2,16 @@ pub mod convert;
 pub mod function;
 pub mod struct_;
 
-use ariadne::{Report, Source};
+use ariadne::{Report, ReportKind, Source};
 
 use std::collections::HashMap;
 use std::fs;
 use std::ops::Range;
 use std::sync::Arc;
 
-use crate::ast::Type;
+use crate::ast::{Type, TypeAnnot};
+
+type Error<'a> = (ReportKind<'a>, Report<'a, (String, Range<usize>)>);
 
 #[derive(Debug)]
 pub struct StructTy {
@@ -22,29 +24,34 @@ pub struct StructTy {
 pub struct TypeEnv<'a> {
     pub variables: HashMap<String, Arc<Type>>,
     pub structs: HashMap<String, Arc<StructTy>>,
-    errors: Vec<Report<'a, (String, Range<usize>)>>,
+    errors: Vec<Error<'a>>,
     file: String,
 }
 
 impl TypeEnv<'_> {
-
     pub fn new(file: String) -> Self {
         TypeEnv {
             variables: HashMap::new(),
             structs: HashMap::new(),
             errors: vec![],
-            file
+            file,
         }
     }
 
-    pub fn report_errors(&self) {
+    pub fn report_errors(&self) -> bool {
         let contents =
             fs::read_to_string(&self.file).expect("Should have been able to read the file :/");
         let source = Source::from(contents);
 
-        for error in &self.errors {
+        let mut failed = false;
+
+        for (kind, error) in &self.errors {
+            if *kind == ReportKind::Error {
+                failed = true;
+            }
             error.print((self.file.clone(), source.clone())).unwrap();
         }
+        failed
     }
 
     pub fn insert_var(&mut self, var: String, ty: Arc<Type>) {
@@ -151,4 +158,46 @@ macro_rules! t_list {
             traits: vec!["Iterable".to_string()],
         })
     };
+}
+
+pub fn type_annot_to_type(type_annot: &TypeAnnot) -> Arc<Type> {
+    match type_annot {
+        TypeAnnot::Bool => t_bool!(),
+        TypeAnnot::Int => t_int!(),
+        TypeAnnot::Float => t_float!(),
+        TypeAnnot::String => t_string!(),
+        TypeAnnot::Boring(name) => Arc::new(Type::Constructor {
+            name: name.to_string(),
+            generics: vec![],
+            traits: vec![],
+        }),
+        TypeAnnot::Generic(name, generics) => {
+            let generics = generics.iter().map(type_annot_to_type).collect::<Vec<_>>();
+            Arc::new(Type::Constructor {
+                name: name.clone(),
+                generics: generics.clone(),
+                traits: vec![],
+            })
+        }
+        TypeAnnot::Union(unions) => {
+            let unions = unions.iter().map(type_annot_to_type).collect::<Vec<_>>();
+            Arc::new(Type::Union(unions))
+        }
+        TypeAnnot::Function {
+            params,
+            return_type,
+        } => {
+            let params = params.iter().map(type_annot_to_type).collect::<Vec<_>>();
+            let return_type = type_annot_to_type(return_type);
+            Arc::new(Type::Function {
+                params,
+                return_type: Box::new(return_type),
+            })
+        }
+        TypeAnnot::Tuple(tuple) => {
+            let tuple = tuple.iter().map(type_annot_to_type).collect::<Vec<_>>();
+            Arc::new(Type::Tuple(tuple))
+        }
+        TypeAnnot::Trait(name) => Arc::new(Type::Trait(name.clone())),
+    }
 }

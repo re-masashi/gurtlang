@@ -5,7 +5,7 @@ pub mod struct_;
 use crate::ast::ASTNode;
 use crate::lexer::Token;
 
-use ariadne::{Report, Source, ReportKind};
+use ariadne::{Report, ReportKind, Source};
 use logos::SpannedIter;
 
 use std::fs;
@@ -13,13 +13,14 @@ use std::iter::Peekable;
 use std::ops::Range;
 
 type TokenIter<'a> = Peekable<SpannedIter<'a, Token>>;
+type Error<'a> = (ReportKind<'a>, Report<'a, (String, Range<usize>)>);
 
 // #[derive(Debug)]
 pub struct Parser<'a> {
     // lastspan: Range<usize>,
     tokens: TokenIter<'a>,
     file: String,
-    pub errors: Vec<(ReportKind<'a>, Report<'a, (String, Range<usize>)>)>,
+    pub errors: Vec<Error<'a>>,
 }
 
 impl<'a> Parser<'a> {

@@ -13,8 +13,8 @@ use crate::typechecker::TypeEnv;
 use crate::{t_bool, t_float, t_int, t_list, t_string, tvar, t_unit};
 
 impl TypeEnv<'_> {
-    pub fn ast_to_typed_ast(&mut self, ast: Vec<ASTNode>, _span: &Range<usize>) -> Vec<TypedASTNode> {
-        ast.into_iter().map(|node| self.node_to_typed_node(node, _span)).collect()
+    pub fn ast_to_typed_ast(&mut self, ast: Vec<(ASTNode, Range<usize>)>) -> Vec<TypedASTNode> {
+        ast.into_iter().map(|(node, span)| self.node_to_typed_node(node, &span)).collect()
     }
 
     pub fn node_to_typed_node(&mut self, node: ASTNode, span: &Range<usize>) -> TypedASTNode {

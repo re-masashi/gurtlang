@@ -5,7 +5,7 @@ pub mod struct_;
 use crate::ast::ASTNode;
 use crate::lexer::Token;
 
-use ariadne::{Report, Source};
+use ariadne::{Report, Source, ReportKind};
 use logos::SpannedIter;
 
 use std::fs;
@@ -19,7 +19,7 @@ pub struct Parser<'a> {
     // lastspan: Range<usize>,
     tokens: TokenIter<'a>,
     file: String,
-    errors: Vec<Report<'a, (String, Range<usize>)>>,
+    pub errors: Vec<(ReportKind<'a>, Report<'a, (String, Range<usize>)>)>,
 }
 
 impl<'a> Parser<'a> {
@@ -50,13 +50,19 @@ impl<'a> Parser<'a> {
         tree
     }
 
-    pub fn report_errors(&self) {
+    pub fn report_errors(&self) -> bool {
         let contents =
             fs::read_to_string(&self.file).expect("Should have been able to read the file :/");
         let source = Source::from(contents);
 
-        for error in &self.errors {
+        let mut failed = false;
+
+        for (kind, error) in &self.errors {
+            if *kind == ReportKind::Error {
+                failed = true;
+            }
             error.print((self.file.clone(), source.clone())).unwrap();
         }
+        failed
     }
 }

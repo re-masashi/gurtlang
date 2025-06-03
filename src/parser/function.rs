@@ -33,7 +33,8 @@ impl<'a> Parser<'a> {
         };
 
         let Some((token, _span_name)) = self.tokens.next() else {
-            self.errors.push(
+            self.errors.push((
+                ReportKind::Error,
                 Report::build(
                     ReportKind::Error,
                     (self.file.clone(), span_function.clone()),
@@ -50,7 +51,7 @@ impl<'a> Parser<'a> {
                 .with_note(function_syntax())
                 .with_message("reached end of file while trying to parse a function definition.")
                 .finish(),
-            );
+            ));
             return (ASTNode::Error, span_function);
         };
 
@@ -59,7 +60,8 @@ impl<'a> Parser<'a> {
         let fun_name = if let Token::Variable(fun_name) = token {
             fun_name
         } else {
-            self.errors.push(
+            self.errors.push((
+                ReportKind::Error,
                 Report::build(
                     ReportKind::Error,
                     (self.file.clone(), span_function.clone()),
@@ -77,12 +79,13 @@ impl<'a> Parser<'a> {
                 .with_note(function_syntax())
                 .with_message("found unexpected token after 'def'. expected a valid identifier.")
                 .finish(),
-            );
+            ));
             return (ASTNode::Error, span_function);
         };
 
         let Some((token, span_starting_paren)) = self.tokens.next() else {
-            self.errors.push(
+            self.errors.push((
+                ReportKind::Error,
                 Report::build(
                     ReportKind::Error,
                     (self.file.clone(), span_function.clone()),
@@ -99,7 +102,7 @@ impl<'a> Parser<'a> {
                 .with_note(function_syntax())
                 .with_message("reached end of file while trying to parse a function definition.")
                 .finish(),
-            );
+            ));
             return (ASTNode::Error, span_function);
         };
 
@@ -110,7 +113,8 @@ impl<'a> Parser<'a> {
         if let Token::LParen = token {
             // do nothing
         } else {
-            self.errors.push(
+            self.errors.push((
+                ReportKind::Error,
                 Report::build(
                     ReportKind::Error,
                     (self.file.clone(), span_function.clone()),
@@ -131,7 +135,7 @@ impl<'a> Parser<'a> {
                     Fmt::fg(fun_name, Color::Blue).bold(),
                 ))
                 .finish(),
-            );
+            ));
             return (ASTNode::Error, span_function);
         };
 
@@ -205,7 +209,8 @@ impl<'a> Parser<'a> {
         _span: Range<usize>,
     ) -> Result<Arg, Box<Report<'a, ErrReport>>> {
         let Some((token, span)) = self.tokens.next() else {
-            self.errors.push(
+            self.errors.push((
+                ReportKind::Error,
                 Report::build(
                     ReportKind::Error,
                     (self.file.clone(), _span.clone()),
@@ -219,7 +224,7 @@ impl<'a> Parser<'a> {
                 .with_note(function_syntax())
                 .with_message("reached end of file while trying to parse a function definition.")
                 .finish(),
-            );
+            ));
             todo!()
             // return Err();
         };
@@ -257,7 +262,8 @@ impl<'a> Parser<'a> {
 
             let type_annot = self.parse_type_annotation(span.clone())?;
 
-            self.errors.push(
+            self.errors.push((
+                ReportKind::Warning,
             Report::build(
                 ReportKind::Warning,
                 (self.file.clone(), span.clone()),
@@ -273,7 +279,7 @@ impl<'a> Parser<'a> {
             .with_note(function_syntax())
             .with_message("found an argument with a type annotation in function definition. type annotations are not fully supported yet")
             .finish(),
-        );
+        ));
             Ok((arg_name.to_string(), Some(type_annot), span))
         } else {
             Ok((arg_name.to_string(), None, span))

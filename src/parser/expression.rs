@@ -52,7 +52,8 @@ impl Parser<'_> {
 
     pub fn parse_expression(&mut self) -> (Expr, Range<usize>) {
         let Some((token, span_expression)) = self.tokens.next() else {
-            self.errors.push(
+            self.errors.push((
+                ReportKind::Error,
                 Report::build(
                     ReportKind::Error,
                     (self.file.clone(), self.file.len()..self.file.len()),
@@ -65,7 +66,7 @@ impl Parser<'_> {
                 )
                 .with_message("expected a valid expression but reached end of file while parsing.")
                 .finish(),
-            );
+            ));
             return (Expr::Error, self.file.len()..self.file.len());
         };
 
@@ -83,7 +84,8 @@ impl Parser<'_> {
             Token::LParen => {
                 let expr = self.parse_expression();
                 let Some((token, span)) = self.tokens.next() else {
-                    self.errors.push(
+                    self.errors.push((
+                        ReportKind::Error,
                         Report::build(
                             ReportKind::Error,
                             (self.file.clone(), span_expression.clone()),
@@ -98,7 +100,7 @@ impl Parser<'_> {
                         )
                         .with_message("reached end of file while parsing expression")
                         .finish(),
-                    );
+                    ));
                     return (Expr::Error, span_expression);
                 };
                 match token.unwrap() {
@@ -125,7 +127,8 @@ impl Parser<'_> {
                         (Expr::Tuple(exprs), span)
                     }
                     _ => {
-                        self.errors.push(
+                        self.errors.push((
+                            ReportKind::Error,
                             Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                                 .with_code("Syntax Error")
                                 .with_label(
@@ -140,7 +143,7 @@ impl Parser<'_> {
                                 )
                                 .with_message("unclosed parenthesis")
                                 .finish(),
-                        );
+                        ));
                         (Expr::Error, span)
                     }
                 }
@@ -194,7 +197,8 @@ impl Parser<'_> {
                     };
                     let index = self.parse_expression();
                     let Some((token, span_expression)) = self.tokens.next() else {
-                        self.errors.push(
+                        self.errors.push((
+                            ReportKind::Error,
                                 Report::build(ReportKind::Error, (self.file.clone(), span_start.clone()))
                                     .with_code("EOF")
                                     .with_label(
@@ -209,7 +213,7 @@ impl Parser<'_> {
                                     ))
                                     .with_message("Missing closing bracket. reached end of file while parsing value index.")
                                     .finish(),
-                            );
+                            ));
                         return (Expr::Error, span_brack.clone());
                     };
                     if let Token::RBracket = token.as_ref().unwrap() {
@@ -221,7 +225,8 @@ impl Parser<'_> {
                             span_expression,
                         )
                     } else {
-                        self.errors.push(
+                        self.errors.push((
+                            ReportKind::Error,
                             Report::build(
                                 ReportKind::Error,
                                 (self.file.clone(), span_expression.clone()),
@@ -244,7 +249,7 @@ impl Parser<'_> {
                             ))
                             .with_message("Unclosed bracket")
                             .finish(),
-                        );
+                        ));
                         return (Expr::Error, span_expression);
                     }
                 } // index
@@ -252,8 +257,8 @@ impl Parser<'_> {
                     let mut args = vec![];
                     loop {
                         let Some((token, _span_expression)) = self.tokens.next() else {
-                            self.errors.push(
-                                    Report::build(ReportKind::Error, (self.file.clone(), span_start.clone()))
+                            self.errors.push((
+                                 ReportKind::Error,   Report::build(ReportKind::Error, (self.file.clone(), span_start.clone()))
                                         .with_code("EOF")
                                         .with_label(
                                             Label::new((self.file.clone(), span_start))
@@ -267,7 +272,7 @@ impl Parser<'_> {
                                         ))
                                         .with_message("Missing closing parenthesis or expressions. reached end of file while parsing function call.")
                                         .finish(),
-                                );
+                                ));
                             return (Expr::Error, span_expression);
                         };
                         if token.unwrap() == Token::RParen {
@@ -275,7 +280,8 @@ impl Parser<'_> {
                         }
                         args.push(self.parse_expression());
                         let Some((token, span_expression)) = self.tokens.next() else {
-                            self.errors.push(
+                            self.errors.push((
+                                ReportKind::Error,
                                     Report::build(ReportKind::Error, (self.file.clone(), span_start.clone()))
                                         .with_code("EOF")
                                         .with_label(
@@ -290,7 +296,7 @@ impl Parser<'_> {
                                         ))
                                         .with_message("Missing closing parenthesis or expressions. reached end of file while parsing function call.")
                                         .finish(),
-                                );
+                                ));
                             return (Expr::Error, span_expression);
                         };
                         match token.unwrap() {
@@ -301,7 +307,8 @@ impl Parser<'_> {
                                 self.tokens.next();
                             }
                             x => {
-                                self.errors.push(
+                                self.errors.push((
+                                    ReportKind::Error,
                                         Report::build(ReportKind::Error, (self.file.clone(), span_start.clone()))
                                             .with_code("EOF")
                                             .with_label(
@@ -316,7 +323,7 @@ impl Parser<'_> {
                                             ))
                                             .with_message(format!("unexpected token. expected ')', found {:?}. ", x))
                                             .finish(),
-                                    );
+                                    ));
                                 return (Expr::Error, span_expression);
                             }
                         }
@@ -594,7 +601,8 @@ impl Parser<'_> {
         // `let` has already been "eaten"
 
         let Some((token, var_span)) = self.tokens.next() else {
-            self.errors.push(
+            self.errors.push((
+                ReportKind::Error,
                 Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                     .with_code("EOF")
                     .with_label(
@@ -608,7 +616,7 @@ impl Parser<'_> {
                     ))
                     .with_message("reached end of file while parsing `let` expression")
                     .finish(),
-            );
+            ));
             return (Expr::Error, span.clone());
         };
         if let Token::Variable(identifier) = token.unwrap() {
@@ -638,7 +646,8 @@ impl Parser<'_> {
             let b = colors.next();
             let _c = colors.next();
 
-            self.errors.push(
+            self.errors.push((
+                ReportKind::Error,
                 Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                     .with_code("Syntax Error")
                     .with_label(
@@ -657,7 +666,7 @@ impl Parser<'_> {
                     ))
                     .with_message("unexpected token after 'let'. expected variable name")
                     .finish(),
-            );
+            ));
             (Expr::Error, span)
         }
     }
@@ -668,7 +677,8 @@ impl Parser<'_> {
         let mut expressions = vec![];
 
         let Some((token, span_expression)) = self.tokens.peek() else {
-            self.errors.push(
+            self.errors.push((
+                ReportKind::Error,
                 Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                     .with_code("EOF")
                     .with_label(
@@ -678,12 +688,13 @@ impl Parser<'_> {
                     )
                     .with_message("reached end of file while parsing `do` expression")
                     .finish(),
-            );
+            ));
             return (Expr::Error, span);
         };
 
         if let &Token::KeywordEnd = token.as_ref().unwrap() {
-            self.errors.push(
+            self.errors.push((
+                ReportKind::Error,
                 Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                     .with_code("Syntax Error")
                     .with_label(
@@ -700,7 +711,7 @@ impl Parser<'_> {
                     )
                     .with_message("Empty `do` expressions are not allowed")
                     .finish(),
-            );
+            ));
             let Some((_, span)) = self.tokens.next() else {
                 todo!()
             }; // eat 'end'
@@ -711,7 +722,8 @@ impl Parser<'_> {
 
         loop {
             let Some((token, span_expression_inside)) = self.tokens.next() else {
-                self.errors.push(
+                self.errors.push((
+                    ReportKind::Error,
                     Report::build(
                         ReportKind::Error,
                         (self.file.clone(), span_expression.clone()),
@@ -724,7 +736,7 @@ impl Parser<'_> {
                     )
                     .with_message("reached end of file while parsing expression")
                     .finish(),
-                );
+                ));
                 return (Expr::Error, span_expression);
             };
 
@@ -743,7 +755,8 @@ impl Parser<'_> {
         let Some((_token, then_span)) = self.tokens.next()
         // eat 'then'
         else {
-            self.errors.push(
+            self.errors.push((
+                    ReportKind::Error,
                     Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                         .with_code("EOF")
                         .with_label(
@@ -765,7 +778,7 @@ impl Parser<'_> {
                         ))
                         .with_message("reached end of file while parsing `if` expression. Expected 'then'")
                         .finish(),
-                );
+                ));
             return (Expr::Error, span);
         };
         let if_branch = Box::new(self.parse_expression());

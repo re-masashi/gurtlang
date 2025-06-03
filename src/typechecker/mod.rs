@@ -27,6 +27,16 @@ pub struct TypeEnv<'a> {
 }
 
 impl TypeEnv<'_> {
+
+    pub fn new(file: String) -> Self {
+        TypeEnv {
+            variables: HashMap::new(),
+            structs: HashMap::new(),
+            errors: vec![],
+            file
+        }
+    }
+
     pub fn report_errors(&self) {
         let contents =
             fs::read_to_string(&self.file).expect("Should have been able to read the file :/");

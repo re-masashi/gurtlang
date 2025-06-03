@@ -1,5 +1,7 @@
 use gurtlang::lexer::Token;
 use gurtlang::parser::Parser;
+use gurtlang::typechecker::TypeEnv;
+
 use logos::Logos;
 
 use std::fs;
@@ -11,11 +13,18 @@ fn main() {
         fs::read_to_string(&filepath).expect("Should have been able to read the file :/");
 
     let lexer = Token::lexer(&contents).spanned().peekable();
-    let mut parser = Parser::new(lexer, filepath);
+    let mut parser = Parser::new(lexer, filepath.clone());
 
-    println!("{:#?}", parser.parse_program());
+    let ast = parser.parse_program();
 
-    parser.report_errors();
+    if parser.report_errors() {
+        panic!("cant continue");
+    };
+
+    let mut type_env = TypeEnv::new(filepath);
+    let typed_ast = type_env.ast_to_typed_ast(ast);
+
+    println!("{:#?}", typed_ast);
 
     println!("Me: Yogurt");
     println!("Gurt: Yo");

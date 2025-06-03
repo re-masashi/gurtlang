@@ -78,7 +78,7 @@ impl TypeEnv<'_> {
                     let mut new_elems = vec![new_first_elem];
                     for elem in &elements[1..] {
                         let typed = self.expr_to_typed_expr((&elem.0, &elem.1));
-                        self.unify(val_ty.clone(), typed.ty.clone(), &val_span, &typed.range);
+                        let _ = self.unify(val_ty.clone(), typed.ty.clone(), &val_span, &typed.range) || panic!("AAAA! INVALID ARRAY ELEM");
                         new_elems.push(typed);
                     }
                     let ty = &new_elems[0].ty.clone();
@@ -282,14 +282,38 @@ impl TypeEnv<'_> {
                     ) if name_l == "int" && name_r == "float" => {
                         t_float!()
                     }
+                    (
+                        BinOp::Eq,
+                        ..
+                    ) => {
+                        t_bool!()
+                    }
+                    (
+                        BinOp::LessEq,
+                        ..
+                    ) => {
+                        t_bool!()
+                    }
+                    (
+                        BinOp::GreaterEq,
+                        ..
+                    ) => {
+                        t_bool!()
+                    }
+                    (
+                        BinOp::NotEq,
+                        ..
+                    ) => {
+                        t_bool!()
+                    }
 
                     _ => {
-                        self.unify(
+                        let _ = self.unify(
                             l_value_typed.ty.clone(),
                             r_value_typed.ty.clone(),
                             l_span,
                             r_span,
-                        );
+                        ) || panic!("AAAAA! INVALID BinOp TYPES");
                         l_value_typed.ty.clone()
                     }
                 };
@@ -308,7 +332,7 @@ impl TypeEnv<'_> {
                 let typed_expr = self.expr_to_typed_expr((expr, span));
                 let ty = typed_expr.ty.clone();
                 if matches!(unop, UnOp::Not) {
-                    self.unify(ty.clone(), t_bool!(), span, span);
+                    let _ = self.unify(ty.clone(), t_bool!(), span, span) || panic!("NOT OPERAND MUST BE A BOOL");
                 }
                 (
                     TypedExprKind::UnOp {
@@ -349,12 +373,12 @@ impl TypeEnv<'_> {
 
                 let ty = r_value_typed.ty.clone();
 
-                self.unify(
+                let _ = self.unify(
                     l_value_typed.ty.clone(),
                     r_value_typed.ty.clone(),
                     l_span,
                     r_span,
-                );
+                ) || panic!("AAAA! INVALID ASSIGNMENT TYPES");
 
                 (
                     TypedExprKind::Assign {
@@ -399,7 +423,7 @@ impl TypeEnv<'_> {
 
                 self.insert_var(var.clone(), var_ty.clone());
 
-                self.unify(var_ty, ty.clone(), val_span, var_span);
+                let _ = self.unify(var_ty, ty.clone(), val_span, var_span) || panic!("AAAAAAAAA INVALID LET TYPE");
 
                 (
                     TypedExprKind::Let {
@@ -420,12 +444,12 @@ impl TypeEnv<'_> {
                 let typed_condition = self.expr_to_typed_expr((condition, condition_span));
                 let typed_if_branch = self.expr_to_typed_expr((if_branch, if_branch_span));
 
-                self.unify(
+                let _ = self.unify(
                     typed_condition.ty.clone(),
                     t_bool!(),
                     condition_span,
                     condition_span,
-                );
+                ) || panic!("AAAAAA! IF CONDITION MUST BE A BOOL");
 
                 match else_branch {
                     Some(else_branch) => {
@@ -433,12 +457,12 @@ impl TypeEnv<'_> {
                         let (else_branch, else_branch_span) = &**else_branch;
                         let typed_else_branch =
                             self.expr_to_typed_expr((else_branch, else_branch_span));
-                        self.unify(
+                        let _ = self.unify(
                             typed_if_branch.ty.clone(),
                             typed_else_branch.ty.clone(),
                             if_branch_span,
                             else_branch_span,
-                        );
+                        ) || panic!("AAA! IF AND ELSE BRANCH HAVE DIFF TYPES");
                         (
                             TypedExprKind::IfElse {
                                 condition: Box::new(typed_condition),

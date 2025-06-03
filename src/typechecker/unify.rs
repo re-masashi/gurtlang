@@ -1,5 +1,13 @@
 #![allow(unused_imports)]
 
+use yansi::Paint;
+use ariadne::Fmt;
+use ariadne::ColorGenerator;
+use ariadne::Label;
+use ariadne::Report;
+use ariadne::ReportKind;
+use yansi::Color;
+
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -17,13 +25,13 @@ impl TypeEnv<'_> {
         t2: Arc<Type>,
         span1: &Range<usize>,
         span2: &Range<usize>,
-    ) {
+    ) -> bool {
         let t1 = self.resolve(t1);
         let t2 = self.resolve(t2);
 
         match (&*t1, &*t2) {
             // Same types
-            _ if t1 == t2 => {}
+            _ if t1 == t2 => {true}
 
             // Variable unification
             (Type::Variable(i), _) => self.bind(*i, t2, span1),
@@ -40,17 +48,28 @@ impl TypeEnv<'_> {
                     return_type: r2,
                 },
             ) if p1.len() == p2.len() => {
+                let mut f = true;
                 for (a, b) in p1.iter().zip(p2.iter()) {
-                    self.unify(a.clone(), b.clone(), span1, span2);
+                    if !self.unify(a.clone(), b.clone(), span1, span2) {
+                        f = false;
+                    }
                 }
-                self.unify(*r1.clone(), *r2.clone(), span1, span2);
+                if f {
+                    self.unify(*r1.clone(), *r2.clone(), span1, span2)
+                } else {
+                    f
+                }
             }
 
             // Tuple types
             (Type::Tuple(t1), Type::Tuple(t2)) if t1.len() == t2.len() => {
+                let mut f = true;
                 for (a, b) in t1.iter().zip(t2.iter()) {
-                    self.unify(a.clone(), b.clone(), span1, span2);
+                    if !self.unify(a.clone(), b.clone(), span1, span2) {
+                        f = false;
+                    }
                 }
+                f
             }
 
             // Constructor types
@@ -66,31 +85,33 @@ impl TypeEnv<'_> {
                     ..
                 },
             ) if n1 == n2 && g1.len() == g2.len() => {
+                let mut f = true;
                 for (a, b) in g1.iter().zip(g2.iter()) {
-                    self.unify(a.clone(), b.clone(), span1, span2);
+                    if !self.unify(a.clone(), b.clone(), span1, span2) {
+                        f = false;
+                    }
                 }
+                f
             }
 
             // (
             //     Type::Trait(n1) ,
             //     Type::Trait(n2),
             // ) if n1 == n2 {
-            // handled in the first case
+            //    // handled in the first case
             // }
 
             // Mismatched types
-            _ => panic!(
-                "Type mismatch: {} vs {}",
-                type_string(&t1),
-                type_string(&t2)
-            ),
+            _ => {
+                false
+            },
         }
     }
 
-    fn bind(&mut self, var: usize, ty: Arc<Type>, span: &Range<usize>) {
+    fn bind(&mut self, var: usize, ty: Arc<Type>, span: &Range<usize>) -> bool {
         if let Type::Variable(i) = *ty {
             if i == var {
-                return; // Same variable
+                return true; // Same variable
             }
         }
 
@@ -103,6 +124,7 @@ impl TypeEnv<'_> {
         }
 
         self.substitutions.insert(var, ty);
+        true
     }
 
     fn occurs(&self, var: usize, ty: &Type) -> bool {

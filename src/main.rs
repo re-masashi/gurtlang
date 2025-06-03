@@ -7,7 +7,7 @@ use logos::Logos;
 use std::fs;
 
 fn main() {
-    let filepath = "examples/5.gurt".to_string();
+    let filepath = "examples/2.gurt".to_string();
 
     let contents =
         fs::read_to_string(&filepath).expect("Should have been able to read the file :/");
@@ -25,6 +25,8 @@ fn main() {
     let typed_ast = type_env.ast_to_typed_ast(ast);
 
     println!("{:#?}", typed_ast);
+
+    type_env.report_errors();
 
     println!("Me: Yogurt");
     println!("Gurt: Yo");

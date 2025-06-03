@@ -55,7 +55,10 @@ impl TypeEnv<'_> {
             }
             Expr::Array { elements } => {
                 if elements.is_empty() {
-                    todo!("idek what to do here ts just stupid")
+                    (
+                        TypedExprKind::Array { elements: vec![] },
+                        t_list!(tvar!(self.variables.len() + 1)),
+                    )
                 } else {
                     // let first_elem = &elements[0];
                     let mut new_elems = vec![];
@@ -92,6 +95,9 @@ impl TypeEnv<'_> {
                         },
                         generics[0].clone(),
                     ),
+                    // Type::Constructor { name, .. } if name == "string" => {
+                    //     (t_string!())
+                    // }
                     _ => panic!("bs. who would even index sumn that's not an array."),
                 }
             }
@@ -293,6 +299,17 @@ impl TypeEnv<'_> {
             } => {
                 let (l_expr, l_span) = &**l_value;
                 let l_value_typed = self.expr_to_typed_expr((l_expr, l_span));
+
+                let is_valid = matches!(
+                    l_value_typed.kind,
+                    TypedExprKind::Variable(_)
+                        | TypedExprKind::Index { .. }
+                        | TypedExprKind::StructAccess { .. }
+                );
+
+                if !is_valid {
+                    panic!("Invalid assignment target");
+                }
 
                 let (r_expr, r_span) = &**r_value;
                 let r_value_typed = self.expr_to_typed_expr((r_expr, r_span));

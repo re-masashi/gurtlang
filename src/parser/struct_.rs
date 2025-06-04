@@ -1,6 +1,10 @@
 use crate::ast::{ASTNode, Struct};
 use crate::lexer::Token;
 use crate::parser::Parser;
+use ariadne::ColorGenerator;
+use ariadne::Label;
+use ariadne::Report;
+use ariadne::ReportKind;
 
 use std::ops::Range;
 
@@ -18,7 +22,19 @@ impl Parser<'_> {
         let name = if let Token::Variable(var) = token.unwrap() {
             var.to_string()
         } else {
-            panic!("expected struct name after struct keyword");
+            self.errors.push((
+                ReportKind::Error,
+                Report::build(ReportKind::Error, (self.file.clone(), span_name.clone()))
+                    .with_code("EOF")
+                    .with_label(
+                        Label::new((self.file.clone(), span_name.clone()))
+                            .with_message("unexpected end of file.")
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_message("unexpected EOF in struct declaration")
+                    .finish(),
+            ));
+            return (ASTNode::Error, span_name.clone());
         };
 
         let Some((token, _span_tok)) = self.tokens.peek() else {
@@ -31,12 +47,36 @@ impl Parser<'_> {
                 unreachable!()
             };
 
-            todo!("parsing generics not implemented yet")
+            self.errors.push((
+                ReportKind::Error,
+                Report::build(ReportKind::Error, (self.file.clone(), span_name.clone()))
+                    .with_code("NOT IMPLEMENTED")
+                    .with_label(
+                        Label::new((self.file.clone(), span_name.clone()))
+                            .with_message("STRUCT GENERICS ARE NOT IMPLEMENTED YET")
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_message("TODO: STRUCT GENERICS")
+                    .finish(),
+            ));
+            return (ASTNode::Error, span_name.clone());
         };
 
         loop {
             let Some((token, span)) = self.tokens.next() else {
-                panic!("expected end or struct field. reached end of file");
+                self.errors.push((
+                    ReportKind::Error,
+                    Report::build(ReportKind::Error, (self.file.clone(), span_name.clone()))
+                        .with_code("EOF")
+                        .with_label(
+                            Label::new((self.file.clone(), span_name.clone()))
+                                .with_message("unexpected end of file.")
+                                .with_color(ColorGenerator::new().next()),
+                        )
+                        .with_message("unexpected EOF in struct declaration")
+                        .finish(),
+                ));
+                return (ASTNode::Error, span_name.clone());
             };
             let token = token.unwrap();
             match token {

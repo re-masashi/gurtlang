@@ -143,10 +143,22 @@ impl<'a> Parser<'a> {
 
         loop {
             let Some((token, span)) = self.tokens.peek() else {
-                panic!(
-                    "invalid token. no errors cuz im lazy {} {:?}",
-                    self.file, span_starting_paren
-                )
+                self.errors.push((
+                    ReportKind::Error,
+                    Report::build(
+                        ReportKind::Error,
+                        (self.file.clone(), span_function.clone()),
+                    )
+                    .with_code("EOF")
+                    .with_label(
+                        Label::new((self.file.clone(), span_function.clone()))
+                            .with_message("unexpected EOF")
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_message("unexpected eof while parsing function")
+                    .finish(),
+                ));
+                return (ASTNode::Error, span_function.clone());
             };
             let span = span.clone();
             match token.as_ref().unwrap() {
@@ -159,7 +171,14 @@ impl<'a> Parser<'a> {
                     continue;
                 }
                 _ => {
-                    args.push(self.parse_function_arg(span).unwrap());
+                    let arg = match self.parse_function_arg(span.clone()) {
+                        Ok(arg) => arg,
+                        Err(e) => {
+                            self.errors.push(*e);
+                            return (ASTNode::Error, span);
+                        }
+                    };
+                    args.push(arg);
                 }
             }
         }
@@ -181,7 +200,13 @@ impl<'a> Parser<'a> {
                 let Some((_, span)) = self.tokens.next() else {
                     unreachable!()
                 };
-                let return_type = self.parse_type_annotation(span.clone()).unwrap();
+                let return_type = match self.parse_type_annotation(span.clone()) {
+                    Ok(result) => result,
+                    Err(e) => {
+                        self.errors.push(*e);
+                        return (ASTNode::Error, span.clone());
+                    }
+                };
                 (
                     ASTNode::Function(Function {
                         name: fun_name,
@@ -207,26 +232,26 @@ impl<'a> Parser<'a> {
     pub fn parse_function_arg(
         &mut self,
         _span: Range<usize>,
-    ) -> Result<Arg, Box<Report<'a, ErrReport>>> {
+    ) -> Result<Arg, Box<(ReportKind<'a>, Report<'a, ErrReport>)>> {
         let Some((token, span)) = self.tokens.next() else {
-            self.errors.push((
-                ReportKind::Error,
-                Report::build(
-                    ReportKind::Error,
-                    (self.file.clone(), _span.clone()),
-                )
-                .with_code("EOF")
-                .with_label(
-                    Label::new((self.file.clone(), _span))
-                        .with_message("expected a valid identifier as argument name but reached end of file".to_string())
-                        .with_color(ColorGenerator::new().next()),
-                )
-                .with_note(function_syntax())
-                .with_message("reached end of file while trying to parse a function definition.")
-                .finish(),
+            return Err(Box::new(
+                (
+                                ReportKind::Error,
+                                Report::build(
+                                    ReportKind::Error,
+                                    (self.file.clone(), _span.clone()),
+                                )
+                                .with_code("EOF")
+                                .with_label(
+                                    Label::new((self.file.clone(), _span))
+                                        .with_message("expected a valid identifier as argument name but reached end of file".to_string())
+                                        .with_color(ColorGenerator::new().next()),
+                                )
+                                .with_note(function_syntax())
+                                .with_message("reached end of file while trying to parse a function definition.")
+                                .finish(),
+                            )
             ));
-            todo!()
-            // return Err();
         };
 
         let token = token.unwrap();
@@ -234,7 +259,8 @@ impl<'a> Parser<'a> {
         let arg_name = if let Token::Variable(ref arg_name) = token {
             arg_name
         } else {
-            return Err(Box::new(
+            return Err(Box::new((
+                ReportKind::Error,
                 Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                     .with_code("EOF")
                     .with_label(
@@ -248,7 +274,7 @@ impl<'a> Parser<'a> {
                     .with_note(function_syntax())
                     .with_message("found unexpected token. expected a valid identifier.")
                     .finish(),
-            ));
+            )));
         };
 
         let Some((token, _span)) = self.tokens.peek() else {
@@ -291,9 +317,10 @@ impl<'a> Parser<'a> {
     pub fn parse_type_annotation(
         &mut self,
         _span: Range<usize>,
-    ) -> Result<TypeAnnot, Box<Report<'a, ErrReport>>> {
+    ) -> Result<TypeAnnot, Box<(ReportKind<'a>, Report<'a, ErrReport>)>> {
         let Some((token, span)) = self.tokens.next() else {
-            return Err(Box::new(
+            return Err(Box::new((
+                ReportKind::Error,
                 Report::build(ReportKind::Error, (self.file.clone(), _span.clone()))
                     .with_code("EOF")
                     .with_label(
@@ -307,7 +334,7 @@ impl<'a> Parser<'a> {
                     .with_note(function_syntax())
                     .with_message("reached end of file while trying to parse a type annotation")
                     .finish(),
-            ));
+            )));
             // todo!()
         };
         let token = token.unwrap();
@@ -321,7 +348,8 @@ impl<'a> Parser<'a> {
             Token::Variable(ref var) if var == "float" => Ok(TypeAnnot::Float),
             Token::Variable(ref var) if var == "trait" => {
                 let Some((token, span)) = self.tokens.next() else {
-                    return Err(Box::new(
+                    return Err(Box::new((
+                        ReportKind::Error,
                         Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                             .with_code("EOF")
                             .with_label(
@@ -337,12 +365,13 @@ impl<'a> Parser<'a> {
                                 "reached end of file while trying to parse a type annotation",
                             )
                             .finish(),
-                    ));
+                    )));
                 };
                 let token = token.unwrap();
                 match token {
                     Token::Variable(ref var) => Ok(TypeAnnot::Trait(var.clone())),
-                    _ => Err(
+                    _ => Err((
+                        ReportKind::Error,
                         Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                             .with_code("EOF")
                             .with_label(
@@ -356,7 +385,7 @@ impl<'a> Parser<'a> {
                             .with_note(function_syntax())
                             .with_message("found unexpected token. expected a valid type.")
                             .finish(),
-                    ),
+                    )),
                 }
             }
             Token::Variable(ref var) => {
@@ -375,10 +404,23 @@ impl<'a> Parser<'a> {
                         let mut generics = vec![];
                         loop {
                             let Some((token, span)) = self.tokens.peek() else {
-                                panic!(
-                                    "invalid token. no errors cuz im lazy {} {:?}",
-                                    self.file, span
-                                )
+                                return Err(Box::new((
+                                    ReportKind::Error,
+                                    Report::build(
+                                        ReportKind::Error,
+                                        (self.file.clone(), span.clone()),
+                                    )
+                                    .with_code("EOF")
+                                    .with_label(
+                                        Label::new((self.file.clone(), span.clone()))
+                                            .with_message(
+                                                "unexpected end of line while parsing generics",
+                                            )
+                                            .with_color(ColorGenerator::new().next()),
+                                    )
+                                    .with_message("unexpected end of file")
+                                    .finish(),
+                                )));
                             };
                             let span = span.clone();
                             match token.as_ref().unwrap() {
@@ -400,7 +442,8 @@ impl<'a> Parser<'a> {
                     _ => Ok(ret),
                 }
             }
-            _ => Err(
+            _ => Err((
+                ReportKind::Error,
                 Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                     .with_code("EOF")
                     .with_label(
@@ -414,7 +457,7 @@ impl<'a> Parser<'a> {
                     .with_note(function_syntax())
                     .with_message("found unexpected token. expected a valid type.")
                     .finish(),
-            ),
+            )),
         };
 
         Ok(type_annot?)

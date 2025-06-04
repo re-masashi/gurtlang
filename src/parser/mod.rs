@@ -4,6 +4,8 @@ pub mod struct_;
 
 use crate::ast::ASTNode;
 use crate::lexer::Token;
+use ariadne::ColorGenerator;
+use ariadne::Label;
 
 use ariadne::{Report, ReportKind, Source};
 use logos::SpannedIter;
@@ -37,7 +39,19 @@ impl<'a> Parser<'a> {
         let mut tree = vec![];
         while let Some((token, span)) = self.tokens.peek() {
             if token.is_err() {
-                panic!("error at {:?}. unexpected token", span);
+                self.errors.push((
+                    ReportKind::Error,
+                    Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
+                        .with_code("IllegalToken")
+                        .with_label(
+                            Label::new((self.file.clone(), span.clone()))
+                                .with_message("illegal token")
+                                .with_color(ColorGenerator::new().next()),
+                        )
+                        .with_message("illegal token found.")
+                        .finish(),
+                ));
+                tree.push((ASTNode::Error, span.clone()));
             }
             match token.as_ref().unwrap() {
                 Token::KeywordStruct => tree.push(self.parse_struct()),

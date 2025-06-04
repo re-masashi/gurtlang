@@ -116,10 +116,21 @@ impl Parser<'_> {
                                         Token::Comma => self.tokens.next(),
                                         Token::RParen => continue,
 
-                                        _ => panic!(
-                                            "invalid token. no errors cuz im lazy {} {:?}",
-                                            self.file, span
-                                        ),
+                                        _ => {
+                                            self.errors.push((
+                                                ReportKind::Error,
+                                                Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
+                                                    .with_code("Syntax Error")
+                                                    .with_label(
+                                                        Label::new((self.file.clone(), span.clone()))
+                                                            .with_message("invalid token. expected ',' or ')' in function call")
+                                                            .with_color(ColorGenerator::new().next()),
+                                                    )
+                                                    .with_message("unexpected token in function call")
+                                                    .finish(),
+                                            ));
+                                            return (Expr::Error, span.clone());
+                                        }
                                     };
                                 }
                             }
@@ -177,13 +188,106 @@ impl Parser<'_> {
                 span_expression.clone(),
             ),
 
-            Token::LBracket => panic!("arrays are unimplemented"),
+            Token::LBracket => {
+                let mut args = vec![];
+                loop {
+                    let Some((token, span_expression)) = self.tokens.next() else {
+                        self.errors.push((
+                             ReportKind::Error,   Report::build(ReportKind::Error, (self.file.clone(), span_expression.clone()))
+                                    .with_code("EOF")
+                                    .with_label(
+                                        Label::new((self.file.clone(), span_expression.clone()))
+                                            .with_message("expected a closing parenthesis ')' or some arguments in function call. reached end of file")
+                                            .with_color(ColorGenerator::new().next()),
+                                    )
+                                    .with_note(format!(
+                                        "the syntax for calling a function is 'your_function{}your_arg1, your_arg1, ...{}'",
+                                        Fmt::fg("(", Color::Yellow).bold(),
+                                        Fmt::fg(")", Color::Yellow).bold(),
+                                    ))
+                                    .with_message("Missing closing parenthesis or expressions. reached end of file while parsing function call.")
+                                    .finish(),
+                            ));
+                        return (Expr::Error, span_expression);
+                    };
+                    if token.unwrap() == Token::RParen {
+                        break;
+                    }
+                    args.push(self.parse_expression());
+                    let Some((token, span_expression)) = self.tokens.next() else {
+                        self.errors.push((
+                            ReportKind::Error,
+                                Report::build(ReportKind::Error, (self.file.clone(), span_expression.clone()))
+                                    .with_code("EOF")
+                                    .with_label(
+                                        Label::new((self.file.clone(), span_expression.clone()))
+                                            .with_message("expected a closing parenthesis ')' or some arguments in function call. reached end of file")
+                                            .with_color(ColorGenerator::new().next()),
+                                    )
+                                    .with_note(format!(
+                                        "the syntax for calling a function is 'your_function{}your_arg1, your_arg1, ...{}'",
+                                        Fmt::fg("(", Color::Yellow).bold(),
+                                        Fmt::fg(")", Color::Yellow).bold(),
+                                    ))
+                                    .with_message("Missing closing parenthesis or expressions. reached end of file while parsing function call.")
+                                    .finish(),
+                            ));
+                        return (Expr::Error, span_expression);
+                    };
+                    match token.unwrap() {
+                        Token::RParen => {
+                            break;
+                        }
+                        Token::Comma => {
+                            self.tokens.next();
+                        }
+                        x => {
+                            self.errors.push((
+                                ReportKind::Error,
+                                    Report::build(ReportKind::Error, (self.file.clone(), span_expression.clone()))
+                                        .with_code("EOF")
+                                        .with_label(
+                                            Label::new((self.file.clone(), span_expression.clone()))
+                                                .with_message("expected a closing parenthesis ')' or some arguments in function call. reached end of file")
+                                                .with_color(ColorGenerator::new().next()),
+                                        )
+                                        .with_note(format!(
+                                            "the syntax for calling a function is 'your_function{}your_arg1, your_arg1, ...{}'",
+                                            Fmt::fg("(", Color::Yellow).bold(),
+                                            Fmt::fg(")", Color::Yellow).bold(),
+                                        ))
+                                        .with_message(format!("unexpected token. expected ')', found {:?}. ", x))
+                                        .finish(),
+                                ));
+                            return (Expr::Error, span_expression);
+                        }
+                    }
+                }
+                (Expr::Array { elements: args }, span_expression.clone())
+            }
 
-            x => panic!("unimplemented {:?}", x),
+            _x => {
+                self.errors.push((
+                    ReportKind::Error,
+                    Report::build(
+                        ReportKind::Error,
+                        (self.file.clone(), span_expression.clone()),
+                    )
+                    .with_code("Syntax Error")
+                    .with_label(
+                        Label::new((self.file.clone(), span_expression.clone()))
+                            .with_message("invalid token")
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_message("unexpected token while parsing expressions")
+                    .finish(),
+                ));
+                return (Expr::Error, span_expression.clone());
+            }
         };
 
         loop {
-            println!("next {:?}", self.tokens.peek());
+            // println!("next {:?}", self.tokens.peek());
             let Some((token, span_start)) = self.tokens.peek() else {
                 return l_expr;
             };
@@ -607,7 +711,7 @@ impl Parser<'_> {
                     .with_code("EOF")
                     .with_label(
                         Label::new((self.file.clone(), span.clone()))
-                            .with_message("expected a variabled after 'let'. reached end of file")
+                            .with_message("expected a variable after 'let'. reached end of file")
                             .with_color(ColorGenerator::new().next()),
                     )
                     .with_note(format!(
@@ -621,7 +725,23 @@ impl Parser<'_> {
         };
         if let Token::Variable(identifier) = token.unwrap() {
             let Some((token, span)) = self.tokens.next() else {
-                todo!()
+                self.errors.push((
+                    ReportKind::Error,
+                    Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
+                        .with_code("EOF")
+                        .with_label(
+                            Label::new((self.file.clone(), span.clone()))
+                                .with_message("expected ':' or =' after variable in let expression. reached unexpected end of file.")
+                                .with_color(ColorGenerator::new().next()),
+                        )
+                        .with_note(format!(
+                            "the syntax for 'let' is '{} your_variable = your_expression'",
+                            Fmt::fg("let", Color::Yellow).bold()
+                        ))
+                        .with_message("reached end of file while parsing `let` expression")
+                        .finish(),
+                ));
+                return (Expr::Error, span.clone());
             }; // eat '='
             let mut type_annot = None;
             match token.unwrap() {
@@ -629,7 +749,23 @@ impl Parser<'_> {
                     type_annot = Some((self.parse_type_annotation(span.clone()).unwrap(), span))
                 }
                 Token::Assign => {}
-                _ => panic!("invalid"),
+                _ => {
+                    self.errors.push((
+                        ReportKind::Error,
+                        Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
+                            .with_code("Syntax Error")
+                            .with_label(
+                                Label::new((self.file.clone(), span.clone()))
+                                    .with_message(
+                                        "invalid token. expected ':' or '=' in let expression",
+                                    )
+                                    .with_color(ColorGenerator::new().next()),
+                            )
+                            .with_message("unexpected token in let expression")
+                            .finish(),
+                    ));
+                    return (Expr::Error, span.clone());
+                }
             }
             let (expr, expr_span) = self.parse_expression();
             (
@@ -698,7 +834,7 @@ impl Parser<'_> {
                 Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
                     .with_code("Syntax Error")
                     .with_label(
-                        Label::new((self.file.clone(), span))
+                        Label::new((self.file.clone(), span.clone()))
                             .with_message("Empty `do` expression found")
                             .with_color(ColorGenerator::new().next()),
                     )
@@ -713,7 +849,21 @@ impl Parser<'_> {
                     .finish(),
             ));
             let Some((_, span)) = self.tokens.next() else {
-                todo!()
+                self.errors.push((
+                    ReportKind::Error,
+                    Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
+                        .with_code("EOF")
+                        .with_label(
+                            Label::new((self.file.clone(), span.clone()))
+                                .with_message(
+                                    "expected 'end' after expressions in 'do'. reached end of file",
+                                )
+                                .with_color(ColorGenerator::new().next()),
+                        )
+                        .with_message("reached end of file while parsing `do` expression")
+                        .finish(),
+                ));
+                return (Expr::Error, span.clone());
             }; // eat 'end'
             return (Expr::Error, span);
         }
@@ -741,7 +891,7 @@ impl Parser<'_> {
             };
 
             span_expression = span_expression_inside;
-            println!("{:?}", span_expression);
+            // println!("{:?}", span_expression);
 
             match token.unwrap() {
                 Token::KeywordEnd => return (Expr::Do { expressions }, span_expression),

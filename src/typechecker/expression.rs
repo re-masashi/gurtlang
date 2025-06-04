@@ -76,13 +76,28 @@ impl TypeEnv<'_> {
                     let val_ty = new_first_elem.ty.clone();
                     let val_span = new_first_elem.range.clone();
                     let mut new_elems = vec![new_first_elem];
-                    for elem in &elements[1..] {
-                        let typed = self.expr_to_typed_expr((&elem.0, &elem.1));
+
+                    if let Some(elem) = elements.get(1) {
+                        let (elem, span) = elem;
+                        let typed = self.expr_to_typed_expr((elem, span));
                         let _ =
                             self.unify(val_ty.clone(), typed.ty.clone(), &val_span, &typed.range)
-                                || panic!("AAAA! INVALID ARRAY ELEM");
+                                || todo!("AAAA! INVALID ARRAY ELEM");
                         new_elems.push(typed);
+
+                        for i in 2..elements.len() {
+                            let (elem, span) = &elements[i];
+                            let typed = self.expr_to_typed_expr((elem, span));
+                            let _ = self.unify(
+                                val_ty.clone(),
+                                typed.ty.clone(),
+                                &val_span,
+                                &typed.range,
+                            ) || todo!("AAAA! INVALID ARRAY ELEM");
+                            new_elems.push(typed);
+                        }
                     }
+
                     let ty = &new_elems[0].ty.clone();
                     (
                         TypedExprKind::Array {
@@ -115,7 +130,7 @@ impl TypeEnv<'_> {
                     // Type::Constructor { name, .. } if name == "string" => {
                     //     (t_string!())
                     // }
-                    _ => panic!("bs. who would even index sumn that's not an array."),
+                    _ => todo!("bs. who would even index sumn that's not an array."),
                 }
             }
             Expr::Call { function, args } => {
@@ -303,7 +318,7 @@ impl TypeEnv<'_> {
                             r_value_typed.ty.clone(),
                             l_span,
                             r_span,
-                        ) || panic!("AAAAA! INVALID BinOp TYPES");
+                        ) || todo!("AAAAA! INVALID BinOp TYPES");
                         l_value_typed.ty.clone()
                     }
                 };
@@ -323,7 +338,7 @@ impl TypeEnv<'_> {
                 let ty = typed_expr.ty.clone();
                 if matches!(unop, UnOp::Not) {
                     let _ = self.unify(ty.clone(), t_bool!(), span, span)
-                        || panic!("NOT OPERAND MUST BE A BOOL");
+                        || todo!("NOT OPERAND MUST BE A BOOL");
                 }
                 (
                     TypedExprKind::UnOp {
@@ -349,7 +364,7 @@ impl TypeEnv<'_> {
                 );
 
                 if !is_valid {
-                    panic!("Invalid assignment target");
+                    todo!("Invalid assignment target");
                 }
 
                 let (r_expr, r_span) = &**r_value;
@@ -369,7 +384,7 @@ impl TypeEnv<'_> {
                     r_value_typed.ty.clone(),
                     l_span,
                     r_span,
-                ) || panic!("AAAA! INVALID ASSIGNMENT TYPES");
+                ) || todo!("AAAA! INVALID ASSIGNMENT TYPES");
 
                 (
                     TypedExprKind::Assign {
@@ -415,7 +430,7 @@ impl TypeEnv<'_> {
                 self.insert_var(var.clone(), var_ty.clone());
 
                 let _ = self.unify(var_ty, ty.clone(), val_span, var_span)
-                    || panic!("AAAAAAAAA INVALID LET TYPE");
+                    || todo!("AAAAAAAAA INVALID LET TYPE");
 
                 (
                     TypedExprKind::Let {
@@ -441,7 +456,7 @@ impl TypeEnv<'_> {
                     t_bool!(),
                     condition_span,
                     condition_span,
-                ) || panic!("AAAAAA! IF CONDITION MUST BE A BOOL");
+                ) || todo!("AAAAAA! IF CONDITION MUST BE A BOOL");
 
                 match else_branch {
                     Some(else_branch) => {
@@ -454,7 +469,7 @@ impl TypeEnv<'_> {
                             typed_else_branch.ty.clone(),
                             if_branch_span,
                             else_branch_span,
-                        ) || panic!("AAA! IF AND ELSE BRANCH HAVE DIFF TYPES");
+                        ) || todo!("AAA! IF AND ELSE BRANCH HAVE DIFF TYPES");
                         (
                             TypedExprKind::IfElse {
                                 condition: Box::new(typed_condition),

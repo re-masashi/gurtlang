@@ -1,12 +1,12 @@
 #![allow(unused_imports)]
 
-use yansi::Paint;
-use ariadne::Fmt;
 use ariadne::ColorGenerator;
+use ariadne::Fmt;
 use ariadne::Label;
 use ariadne::Report;
 use ariadne::ReportKind;
 use yansi::Color;
+use yansi::Paint;
 
 use std::ops::Range;
 use std::sync::Arc;
@@ -31,7 +31,7 @@ impl TypeEnv<'_> {
 
         match (&*t1, &*t2) {
             // Same types
-            _ if t1 == t2 => {true}
+            _ if t1 == t2 => true,
 
             // Variable unification
             (Type::Variable(i), _) => self.bind(*i, t2, span1),
@@ -94,6 +94,45 @@ impl TypeEnv<'_> {
                 f
             }
 
+            (Type::Union(u1), Type::Union(u2)) => {
+                let mut success = false;
+                for t1 in u1 {
+                    for t2 in u2 {
+                        if self.unify(t1.clone(), t2.clone(), span1, span2) {
+                            success = true;
+                            break;
+                        }
+                    }
+                    if success {
+                        break;
+                    }
+                }
+                success
+            }
+
+            // Union and other types
+            (Type::Union(u), _other) => {
+                let mut success = false;
+                for t in u {
+                    if self.unify(t.clone(), t2.clone(), span1, span2) {
+                        success = true;
+                        break;
+                    }
+                }
+                success
+            }
+
+            (_other, Type::Union(u)) => {
+                let mut success = false;
+                for t in u {
+                    if self.unify(t1.clone(), t.clone(), span1, span2) {
+                        success = true;
+                        break;
+                    }
+                }
+                success
+            }
+
             // (
             //     Type::Trait(n1) ,
             //     Type::Trait(n2),
@@ -102,9 +141,7 @@ impl TypeEnv<'_> {
             // }
 
             // Mismatched types
-            _ => {
-                false
-            },
+            _ => false,
         }
     }
 

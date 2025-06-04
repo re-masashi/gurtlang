@@ -78,7 +78,9 @@ impl TypeEnv<'_> {
                     let mut new_elems = vec![new_first_elem];
                     for elem in &elements[1..] {
                         let typed = self.expr_to_typed_expr((&elem.0, &elem.1));
-                        let _ = self.unify(val_ty.clone(), typed.ty.clone(), &val_span, &typed.range) || panic!("AAAA! INVALID ARRAY ELEM");
+                        let _ =
+                            self.unify(val_ty.clone(), typed.ty.clone(), &val_span, &typed.range)
+                                || panic!("AAAA! INVALID ARRAY ELEM");
                         new_elems.push(typed);
                     }
                     let ty = &new_elems[0].ty.clone();
@@ -282,28 +284,16 @@ impl TypeEnv<'_> {
                     ) if name_l == "int" && name_r == "float" => {
                         t_float!()
                     }
-                    (
-                        BinOp::Eq,
-                        ..
-                    ) => {
+                    (BinOp::Eq, ..) => {
                         t_bool!()
                     }
-                    (
-                        BinOp::LessEq,
-                        ..
-                    ) => {
+                    (BinOp::LessEq, ..) => {
                         t_bool!()
                     }
-                    (
-                        BinOp::GreaterEq,
-                        ..
-                    ) => {
+                    (BinOp::GreaterEq, ..) => {
                         t_bool!()
                     }
-                    (
-                        BinOp::NotEq,
-                        ..
-                    ) => {
+                    (BinOp::NotEq, ..) => {
                         t_bool!()
                     }
 
@@ -332,7 +322,8 @@ impl TypeEnv<'_> {
                 let typed_expr = self.expr_to_typed_expr((expr, span));
                 let ty = typed_expr.ty.clone();
                 if matches!(unop, UnOp::Not) {
-                    let _ = self.unify(ty.clone(), t_bool!(), span, span) || panic!("NOT OPERAND MUST BE A BOOL");
+                    let _ = self.unify(ty.clone(), t_bool!(), span, span)
+                        || panic!("NOT OPERAND MUST BE A BOOL");
                 }
                 (
                     TypedExprKind::UnOp {
@@ -423,7 +414,8 @@ impl TypeEnv<'_> {
 
                 self.insert_var(var.clone(), var_ty.clone());
 
-                let _ = self.unify(var_ty, ty.clone(), val_span, var_span) || panic!("AAAAAAAAA INVALID LET TYPE");
+                let _ = self.unify(var_ty, ty.clone(), val_span, var_span)
+                    || panic!("AAAAAAAAA INVALID LET TYPE");
 
                 (
                     TypedExprKind::Let {

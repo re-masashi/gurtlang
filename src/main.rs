@@ -26,7 +26,13 @@ fn main() {
 
     println!("{:#?}", typed_ast);
 
-    type_env.report_errors();
+    if type_env.report_errors() {
+        panic!("cant continue. type errors");
+    };
+
+    let resolved_ast = type_env.resolve_all(typed_ast);
+
+    let mono_map = type_env.collect_monomorphizations(&resolved_ast);
 
     println!("Me: Yogurt");
     println!("Gurt: Yo");

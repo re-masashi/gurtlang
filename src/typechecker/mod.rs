@@ -2,6 +2,8 @@ pub mod expression;
 pub mod function;
 pub mod struct_;
 pub mod unify;
+pub mod resolve;
+pub mod monomorphize;
 
 use ariadne::{Report, ReportKind, Source};
 

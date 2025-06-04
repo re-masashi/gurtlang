@@ -32,7 +32,7 @@ fn main() {
 
     let resolved_ast = type_env.resolve_all(typed_ast);
 
-    let mono_map = type_env.collect_monomorphizations(&resolved_ast);
+    let _mono_map = type_env.collect_monomorphizations(&resolved_ast);
 
     println!("Me: Yogurt");
     println!("Gurt: Yo");

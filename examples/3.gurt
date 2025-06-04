@@ -1,5 +1,10 @@
 def print(a: string, b: string, c: trait Printable, d: List<List<int>>)
 	print(a)
 
-def int_to_string(n: int) -> string
-	string(n)
+def identity(n)
+	n
+
+identity(1)
+identity("aaa")
+
+

@@ -21,6 +21,19 @@ impl Parser<'_> {
             panic!("expected struct name after struct keyword");
         };
 
+        let Some((token, _span_tok)) = self.tokens.peek() else {
+            // EOF error
+            unreachable!()
+        };
+
+        if let Token::Less = token.clone().unwrap() {
+            let Some((_token, _span_tok)) = self.tokens.peek() else {
+                unreachable!()
+            };
+
+            todo!("parsing generics not implemented yet")
+        };
+
         loop {
             let Some((token, span)) = self.tokens.next() else {
                 panic!("expected end or struct field. reached end of file");

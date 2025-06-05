@@ -7,7 +7,7 @@ use logos::Logos;
 use std::fs;
 
 fn main() {
-    let filepath = "examples/3.gurt".to_string();
+    let filepath = "examples/5.gurt".to_string();
 
     let contents =
         fs::read_to_string(&filepath).expect("Should have been able to read the file :/");
@@ -24,17 +24,16 @@ fn main() {
     let mut type_env = TypeEnv::new(filepath);
     let typed_ast = type_env.ast_to_typed_ast(ast);
 
-    println!("{:#?}", typed_ast);
+    // println!("{:#?}", typed_ast);
 
     if type_env.report_errors() {
         panic!("cant continue. type errors");
     };
 
     let resolved_ast = type_env.resolve_all(typed_ast);
+    let mono_ast = type_env.monomorphize_ast(resolved_ast);
 
-    let mono_map = type_env.collect_monomorphizations(&resolved_ast);
-
-    println!("{:#?}", mono_map);
+    println!("{:#?}", mono_ast);
 
     println!("Me: Yogurt");
     println!("Gurt: Yo");

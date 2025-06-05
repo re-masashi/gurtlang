@@ -153,7 +153,7 @@ pub enum TypeAnnot {
     Trait(String),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum Type {
     Constructor {
         name: String,
@@ -172,6 +172,7 @@ pub enum Type {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct TypedExpr {
     pub kind: TypedExprKind,
     pub ty: Arc<Type>,
@@ -179,6 +180,7 @@ pub struct TypedExpr {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub enum TypedExprKind {
     Bool(bool),
     Int(i64),
@@ -257,6 +259,7 @@ pub enum TypedASTNode {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct TypedFunction {
     pub name: String,
     pub args: Vec<(String, Arc<Type>, Range<usize>)>,
@@ -269,4 +272,12 @@ pub struct TypedStruct {
     pub name: String,
     pub generics: Vec<(String, Range<usize>)>, // only boring types?
     pub fields: Vec<(String, Arc<Type>, Range<usize>)>,
+}
+
+impl TypedFunction {
+    /// Checks if a function is generic (contains type variables)
+    pub fn is_generic(&self) -> bool {
+        self.args.iter().any(|(_, ty, _)| matches!(&**ty, Type::Variable(_))) ||
+        matches!(&*self.return_type.0, Type::Variable(_))
+    }
 }

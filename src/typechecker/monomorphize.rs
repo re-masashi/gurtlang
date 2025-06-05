@@ -8,174 +8,380 @@ use crate::ast::{
     ASTNode, AssignOp, BinOp, Expr, Function, Struct, Type, TypeAnnot, TypedASTNode, TypedExpr,
     TypedExprKind, TypedFunction, TypedStruct,
 };
-use crate::typechecker::{StructTy, TypeEnv, type_annot_to_type};
+use crate::typechecker::{StructTy, TypeEnv, type_annot_to_type, type_string};
 use crate::{t_bool, t_float, t_int, t_list, t_string, t_unit, tvar};
 
 impl TypeEnv<'_> {
-    pub fn collect_monomorphizations(
-        &self,
-        ast: &[TypedASTNode],
-    ) -> HashMap<String, Vec<Vec<Arc<Type>>>> {
-        let mut mono_map: HashMap<String, Vec<Vec<Arc<Type>>>> = HashMap::new();
-
+    fn substitute_type(&self, ty: &Arc<Type>, type_map: &HashMap<usize, Arc<Type>>) -> Arc<Type> {
+           match &**ty {
+               Type::Variable(id) => {
+                   type_map.get(id).cloned().unwrap_or_else(|| {
+                       // If not in map, try to resolve it
+                       let resolved = self.resolve(ty.clone());
+                       if let Type::Variable(id) = &*resolved {
+                           type_map.get(id).cloned().unwrap_or(resolved)
+                       } else {
+                           self.substitute_type(&resolved, type_map)
+                       }
+                   })
+               }
+               Type::Constructor { name, generics, traits } => {
+                   let new_generics = generics.iter()
+                       .map(|t| self.substitute_type(t, type_map))
+                       .collect();
+                   Arc::new(Type::Constructor {
+                       name: name.clone(),
+                       generics: new_generics,
+                       traits: traits.clone(),
+                   })
+               }
+               Type::Function { params, return_type } => {
+                   let new_params = params.iter()
+                       .map(|t| self.substitute_type(t, type_map))
+                       .collect();
+                   let new_return = self.substitute_type(return_type, type_map);
+                   Arc::new(Type::Function {
+                       params: new_params,
+                       return_type: (new_return),
+                   })
+               }
+               Type::Tuple(types) => {
+                   let new_types = types.iter()
+                       .map(|t| self.substitute_type(t, type_map))
+                       .collect();
+                   Arc::new(Type::Tuple(new_types))
+               }
+               Type::Union(types) => {
+                   let new_types = types.iter()
+                       .map(|t| self.substitute_type(t, type_map))
+                       .collect();
+                   Arc::new(Type::Union(new_types))
+               }
+               _ => ty.clone(),
+           }
+       }
+    /// Properly monomorphizes the AST with correct order and type replacement
+    pub fn monomorphize_ast(&self, ast: Vec<TypedASTNode>) -> Vec<TypedASTNode> {
+        // First pass: collect all generic functions
+        let mut generic_fns = HashMap::new();
+        let mut non_generic_nodes = Vec::new();
+        
         for node in ast {
-            self.collect_node_monomorphizations(node, &mut mono_map);
-        }
-
-        mono_map
-    }
-
-    fn collect_node_monomorphizations(
-        &self,
-        node: &TypedASTNode,
-        mono_map: &mut HashMap<String, Vec<Vec<Arc<Type>>>>,
-    ) {
-        match node {
-            TypedASTNode::Expr((expr, _)) => {
-                self.collect_expr_monomorphizations(expr, mono_map);
-            }
-            TypedASTNode::Function((func, _)) => {
-                self.collect_function_monomorphizations(func, mono_map);
-            }
-            TypedASTNode::Struct((strukt, _)) => {
-                self.collect_struct_monomorphizations(strukt, mono_map);
-            }
-            _ => {}
-        }
-    }
-
-    fn collect_expr_monomorphizations(
-        &self,
-        expr: &TypedExpr,
-        mono_map: &mut HashMap<String, Vec<Vec<Arc<Type>>>>,
-    ) {
-        match &expr.kind {
-            TypedExprKind::Call { function, args } => {
-                if let TypedExprKind::Variable(func_name) = &function.kind {
-                    let arg_types: Vec<Arc<Type>> = args.iter().map(|arg| arg.ty.clone()).collect();
-
-                    mono_map
-                        .entry(func_name.clone())
-                        .or_default()
-                        .push(arg_types);
+            if let TypedASTNode::Function((ref func, ref _span)) = node {
+                if func.is_generic() {
+                    if let TypedASTNode::Function((func, span)) = node {
+                        generic_fns.insert(func.name.clone(), (func, span));
+                    }
+                    continue;
                 }
             }
-            TypedExprKind::StructAccess { struct_val, .. } => {
-                if let TypedExprKind::Variable(struct_name) = &struct_val.kind {
-                    // Get the struct definition
-                    if let Some(struct_ty) = self.structs.get(struct_name) {
-                        // Collect generic parameter types
-                        let generic_types: Vec<Arc<Type>> = struct_ty
-                            .generics
-                            .iter()
-                            .map(|name| {
-                                self.variables
-                                    .get(name)
-                                    .cloned()
-                                    .unwrap_or_else(|| tvar!(0))
-                            })
-                            .collect();
+            non_generic_nodes.push(node);
+        }
+        
+        // Second pass: process nodes and specialize functions
+        let mut specialized_fns = HashMap::new();
+        let mut processed_nodes = Vec::new();
+        
+        for node in non_generic_nodes {
+            processed_nodes.push(self.process_node(node, &generic_fns, &mut specialized_fns));
+        }
+        
+        // Third pass: add specialized functions to the beginning of the AST
+        let mut result = Vec::new();
+        for (_, (func, span)) in specialized_fns {
+            result.push(TypedASTNode::Function((func, span)));
+        }
+        result.extend(processed_nodes);
+        result
+    }
 
-                        mono_map
-                            .entry(struct_name.clone())
-                            .or_default()
-                            .push(generic_types);
+    fn process_node(
+        &self,
+        node: TypedASTNode,
+        generic_fns: &HashMap<String, (TypedFunction, Range<usize>)>,
+        specialized_fns: &mut HashMap<String, (TypedFunction, Range<usize>)>,
+    ) -> TypedASTNode {
+        match node {
+            TypedASTNode::Expr((expr, span)) => {
+                TypedASTNode::Expr((self.process_expr(expr, generic_fns, specialized_fns), span))
+            }
+            TypedASTNode::Function((func, span)) => {
+                // Process function body for nested generics
+                let (body_expr, body_span) = *func.body;
+                let processed_body = self.process_expr(body_expr, generic_fns, specialized_fns);
+                TypedASTNode::Function((
+                    TypedFunction {
+                        body: Box::new((processed_body, body_span)),
+                        ..func
+                    },
+                    span,
+                ))
+            }
+            _ => node,
+        }
+    }
+
+    fn process_expr(
+            &self,
+            expr: TypedExpr,
+            generic_fns: &HashMap<String, (TypedFunction, Range<usize>)>,
+            specialized_fns: &mut HashMap<String, (TypedFunction, Range<usize>)>,
+        ) -> TypedExpr {
+            match expr.kind {
+                TypedExprKind::Call { function, args } => {
+                    let new_function = self.process_expr(*function, generic_fns, specialized_fns);
+                    let new_args = args.into_iter()
+                        .map(|arg| self.process_expr(arg, generic_fns, specialized_fns))
+                        .collect::<Vec<_>>();
+                    
+                    if let TypedExprKind::Variable(func_name) = &new_function.kind {
+                        if let Some((generic_func, orig_span)) = generic_fns.get(func_name) {
+                            // Create specialized function
+                            let specialized_func = self.specialize_function_at_call(generic_func, &new_args);
+                            let spec_name = specialized_func.name.clone();
+                            
+                            // Store specialized function
+                            specialized_fns.insert(spec_name.clone(), (specialized_func.clone(), orig_span.clone()));
+                            
+                            // Return new call with concrete type
+                            return TypedExpr {
+                                kind: TypedExprKind::Call {
+                                    function: Box::new(TypedExpr {
+                                        kind: TypedExprKind::Variable(spec_name),
+                                        ty: new_function.ty,
+                                        range: new_function.range,
+                                    }),
+                                    args: new_args,
+                                },
+                                // FIXED: Use the specialized function's return type
+                                ty: specialized_func.return_type.0.clone(),
+                                range: expr.range,
+                            };
+                        }
+                    }
+                    
+                    // Non-generic call
+                    TypedExpr {
+                        kind: TypedExprKind::Call {
+                            function: Box::new(new_function),
+                            args: new_args,
+                        },
+                        ty: expr.ty,
+                        range: expr.range,
                     }
                 }
+                // ... handle other expression types ...
+                _ => expr,
             }
-            _ => {}
         }
 
-        // Recursively process child expressions
-        match &expr.kind {
-            TypedExprKind::Call { function, args } => {
-                self.collect_expr_monomorphizations(function, mono_map);
-                for arg in args {
-                    self.collect_expr_monomorphizations(arg, mono_map);
+    /// Generates a unique string representation of a type for specialization names
+       fn type_signature_string(&self, ty: &Arc<Type>) -> String {
+           match &**ty {
+               Type::Constructor { name, generics, .. } => {
+                   if generics.is_empty() {
+                       name.clone()
+                   } else {
+                       let generics_str = generics.iter()
+                           .map(|g| self.type_signature_string(g))
+                           .collect::<Vec<_>>()
+                           .join("_");
+                       format!("{}<{}>", name, generics_str)
+                   }
+               }
+               Type::Variable(i) => format!("T{}", i),
+               Type::Function { params, return_type } => {
+                   let params_str = params.iter()
+                       .map(|p| self.type_signature_string(p))
+                       .collect::<Vec<_>>()
+                       .join("_");
+                   let return_str = self.type_signature_string(return_type);
+                   format!("fn_{}_to_{}", params_str, return_str)
+               }
+               Type::Tuple(types) => {
+                   let types_str = types.iter()
+                       .map(|t| self.type_signature_string(t))
+                       .collect::<Vec<_>>()
+                       .join("_");
+                   format!("tuple_{}", types_str)
+               }
+               Type::Union(types) => {
+                   let types_str = types.iter()
+                       .map(|t| self.type_signature_string(t))
+                       .collect::<Vec<_>>()
+                       .join("_");
+                   format!("union_{}", types_str)
+               }
+               _ => format!("{:?}", ty).replace(" ", ""),
+           }
+       }
+
+    fn specialize_function_at_call(
+            &self,
+            func: &TypedFunction,
+            args: &[TypedExpr],
+        ) -> TypedFunction {
+            let mut specialized = func.clone();
+            let mut type_map = HashMap::new();
+            
+            // Create type mapping from arguments
+            for (i, (_, param_ty, _)) in func.args.iter().enumerate() {
+                if let Type::Variable(id) = &**param_ty {
+                    let resolved_arg_ty = self.resolve_deep(args[i].ty.clone());
+                    type_map.insert(*id, resolved_arg_ty);
                 }
             }
-            TypedExprKind::BinOp {
-                l_value, r_value, ..
-            } => {
-                self.collect_expr_monomorphizations(l_value, mono_map);
-                self.collect_expr_monomorphizations(r_value, mono_map);
-            }
-            TypedExprKind::Let { value, .. } => {
-                self.collect_expr_monomorphizations(value, mono_map);
-            }
-            TypedExprKind::IfElse {
-                condition,
-                if_branch,
-                else_branch,
-                ..
-            } => {
-                self.collect_expr_monomorphizations(condition, mono_map);
-                self.collect_expr_monomorphizations(if_branch, mono_map);
-                if let Some(branch) = else_branch {
-                    self.collect_expr_monomorphizations(branch, mono_map);
-                }
-            }
-            TypedExprKind::Do { expressions } => {
-                for expr in expressions {
-                    self.collect_expr_monomorphizations(expr, mono_map);
-                }
-            }
-            TypedExprKind::Array { elements } => {
-                for elem in elements {
-                    self.collect_expr_monomorphizations(elem, mono_map);
-                }
-            }
-            TypedExprKind::Tuple(elements) => {
-                for elem in elements {
-                    self.collect_expr_monomorphizations(elem, mono_map);
-                }
-            }
-            // Add other recursive cases as needed...
-            _ => {}
+            
+            // Generate unique name based on argument types
+            let arg_types: Vec<String> = args.iter()
+                .map(|arg| self.type_signature_string(&arg.ty))
+                .collect();
+            
+            // Include return type in the signature for full uniqueness
+            let return_type = self.substitute_type(&func.return_type.0, &type_map);
+            let return_str = self.type_signature_string(&return_type);
+            
+            let signature = format!("{}_{}_to_{}", 
+                func.name, 
+                arg_types.join("_"), 
+                return_str
+            );
+            
+            // Sanitize the name for use as an identifier
+            let spec_name = sanitize_identifier(&signature);
+            specialized.name = spec_name;
+            
+            // Apply type mapping to function signature
+            specialized.args = func.args.iter()
+                .map(|(name, ty, span)| {
+                    let new_ty = self.substitute_type(ty, &type_map);
+                    (name.clone(), new_ty, span.clone())
+                })
+                .collect();
+            
+            specialized.return_type.0 = return_type;
+            
+            // Apply substitution to function body
+            let (body_expr, body_span) = *func.body.clone();
+            specialized.body = Box::new((
+                self.substitute_in_expr(body_expr, &type_map),
+                body_span,
+            ));
+            
+            specialized
         }
-    }
+        fn substitute_in_expr(
+                &self,
+                expr: TypedExpr,
+                type_map: &HashMap<usize, Arc<Type>>,
+            ) -> TypedExpr {
+                let new_ty = self.substitute_type(&expr.ty, type_map);
+                
+                let new_kind = match expr.kind {
+                    TypedExprKind::Call { function, args } => {
+                        let new_function = Box::new(self.substitute_in_expr(*function, type_map));
+                        let new_args = args.into_iter()
+                            .map(|arg| self.substitute_in_expr(arg, type_map))
+                            .collect();
+                        TypedExprKind::Call {
+                            function: new_function,
+                            args: new_args,
+                        }
+                    }
+                    TypedExprKind::Variable(name) => TypedExprKind::Variable(name),
+                    TypedExprKind::BinOp { operator, l_value, r_value } => {
+                        let new_l = Box::new(self.substitute_in_expr(*l_value, type_map));
+                        let new_r = Box::new(self.substitute_in_expr(*r_value, type_map));
+                        TypedExprKind::BinOp {
+                            operator,
+                            l_value: new_l,
+                            r_value: new_r,
+                        }
+                    }
+                    TypedExprKind::Let { var, value } => {
+                        let new_value = Box::new(self.substitute_in_expr(*value, type_map));
+                        TypedExprKind::Let {
+                            var,
+                            value: new_value,
+                        }
+                    }
+                    TypedExprKind::IfElse { condition, if_branch, else_branch } => {
+                        let new_cond = Box::new(self.substitute_in_expr(*condition, type_map));
+                        let new_if = Box::new(self.substitute_in_expr(*if_branch, type_map));
+                        let new_else = else_branch.map(|b| {
+                            Box::new(self.substitute_in_expr(*b, type_map))
+                        });
+                        TypedExprKind::IfElse {
+                            condition: new_cond,
+                            if_branch: new_if,
+                            else_branch: new_else,
+                        }
+                    }
+                    // Add other expression types as needed
+                    kind => kind,
+                };
+                
+                TypedExpr {
+                    kind: new_kind,
+                    ty: new_ty,
+                    range: expr.range,
+                }
+            }
+            
+            pub fn resolve_deep(&self, ty: Arc<Type>) -> Arc<Type> {
+                    let resolved = self.resolve(ty.clone());
+                    match &*resolved {
+                        // Handle function types specially for monomorphization
+                        Type::Function { params, return_type } => {
+                            let concrete_params = params.iter()
+                                .map(|t| self.resolve_deep(t.clone()))
+                                .collect();
+                            let concrete_return = self.resolve_deep(return_type.clone());
+                            
+                            Arc::new(Type::Function {
+                                params: concrete_params,
+                                return_type: (concrete_return),
+                            })
+                        }
+                        
+                        // Other types get normal resolution
+                        _ => {
+                            match &*resolved {
+                                Type::Variable(_) => resolved,
+                                Type::Constructor { name, generics, traits } => {
+                                    let resolved_generics = generics.iter()
+                                        .map(|t| self.resolve_deep(t.clone()))
+                                        .collect();
+                                    Arc::new(Type::Constructor {
+                                        name: name.clone(),
+                                        generics: resolved_generics,
+                                        traits: traits.clone(),
+                                    })
+                                }
+                                Type::Tuple(types) => {
+                                    let resolved_types = types.iter()
+                                        .map(|t| self.resolve_deep(t.clone()))
+                                        .collect();
+                                    Arc::new(Type::Tuple(resolved_types))
+                                }
+                                Type::Union(types) => {
+                                    let resolved_types = types.iter()
+                                        .map(|t| self.resolve_deep(t.clone()))
+                                        .collect();
+                                    Arc::new(Type::Union(resolved_types))
+                                }
+                                _ => resolved,
+                            }
+                        }
+                    }
+                }
 
-    fn collect_function_monomorphizations(
-        &self,
-        func: &TypedFunction,
-        mono_map: &mut HashMap<String, Vec<Vec<Arc<Type>>>>,
-    ) {
-        // For functions, collect based on argument types
-        let arg_types: Vec<Arc<Type>> = func.args.iter().map(|(_, ty, _)| ty.clone()).collect();
 
-        if !arg_types.is_empty() {
-            mono_map
-                .entry(func.name.clone())
-                .or_default()
-                .push(arg_types);
-        }
+}
 
-        // Process function body
-        self.collect_expr_monomorphizations(&func.body.0, mono_map);
-    }
-
-    fn collect_struct_monomorphizations(
-        &self,
-        strukt: &TypedStruct,
-        mono_map: &mut HashMap<String, Vec<Vec<Arc<Type>>>>,
-    ) {
-        // Collect struct's generic parameters
-        let generic_types: Vec<Arc<Type>> = strukt
-            .generics
-            .iter()
-            .map(|(name, _)| {
-                self.variables
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| tvar!(0))
-            })
-            .collect();
-
-        if !generic_types.is_empty() {
-            mono_map
-                .entry(strukt.name.clone())
-                .or_default()
-                .push(generic_types);
-        }
-    }
+/// Sanitizes a string to be a valid identifier
+fn sanitize_identifier(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .collect()
 }

@@ -1,6 +1,5 @@
-let a = 1
+def identity(n)
+	n
 
-if a then
-	1
-else
-	"a"
+identity(1)
+identity("a")

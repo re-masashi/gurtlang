@@ -223,7 +223,7 @@ pub fn type_annot_to_type(type_annot: &TypeAnnot) -> Arc<Type> {
             let return_type = type_annot_to_type(return_type);
             Arc::new(Type::Function {
                 params,
-                return_type: return_type,
+                return_type,
             })
         }
         TypeAnnot::Tuple(tuple) => {

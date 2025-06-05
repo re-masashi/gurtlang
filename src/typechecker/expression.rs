@@ -85,8 +85,8 @@ impl TypeEnv<'_> {
                                 || todo!("AAAA! INVALID ARRAY ELEM");
                         new_elems.push(typed);
 
-                        for i in 2..elements.len() {
-                            let (elem, span) = &elements[i];
+                        for (elem, span) in elements.iter().skip(2) {
+                            // let (elem, span) = &elements[i];
                             let typed = self.expr_to_typed_expr((elem, span));
                             let _ = self.unify(
                                 val_ty.clone(),

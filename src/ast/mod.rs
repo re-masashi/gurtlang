@@ -168,19 +168,18 @@ pub enum Type {
     },
     Tuple(Vec<Arc<Type>>),
     Union(Vec<Arc<Type>>),
+    GenericParam(String), // JUST FOR STRUCTS AND MAYBE ENUMS LATER
     Unit,
 }
 
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TypedExpr {
     pub kind: TypedExprKind,
     pub ty: Arc<Type>,
     pub range: Range<usize>,
 }
 
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum TypedExprKind {
     Bool(bool),
     Int(i64),
@@ -258,8 +257,7 @@ pub enum TypedASTNode {
     Error, // dummy node for error recovery
 }
 
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TypedFunction {
     pub name: String,
     pub args: Vec<(String, Arc<Type>, Range<usize>)>,
@@ -277,7 +275,9 @@ pub struct TypedStruct {
 impl TypedFunction {
     /// Checks if a function is generic (contains type variables)
     pub fn is_generic(&self) -> bool {
-        self.args.iter().any(|(_, ty, _)| matches!(&**ty, Type::Variable(_))) ||
-        matches!(&*self.return_type.0, Type::Variable(_))
+        self.args
+            .iter()
+            .any(|(_, ty, _)| matches!(&**ty, Type::Variable(_)))
+            || matches!(&*self.return_type.0, Type::Variable(_))
     }
 }

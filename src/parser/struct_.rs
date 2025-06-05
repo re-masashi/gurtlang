@@ -13,6 +13,7 @@ impl Parser<'_> {
         let Some((_token, span_struct)) = self.tokens.next() else {
             unreachable!()
         };
+        let mut generics = vec![];
         let mut fields = vec![];
 
         let Some((token, span_name)) = self.tokens.next() else {
@@ -43,23 +44,54 @@ impl Parser<'_> {
         };
 
         if let Token::Less = token.clone().unwrap() {
-            let Some((_token, _span_tok)) = self.tokens.peek() else {
+            let Some((_token, _span_tok)) = self.tokens.next() else {
                 unreachable!()
             };
 
-            self.errors.push((
-                ReportKind::Error,
-                Report::build(ReportKind::Error, (self.file.clone(), span_name.clone()))
-                    .with_code("NOT IMPLEMENTED")
-                    .with_label(
-                        Label::new((self.file.clone(), span_name.clone()))
-                            .with_message("STRUCT GENERICS ARE NOT IMPLEMENTED YET")
-                            .with_color(ColorGenerator::new().next()),
-                    )
-                    .with_message("TODO: STRUCT GENERICS")
-                    .finish(),
-            ));
-            return (ASTNode::Error, span_name.clone());
+            loop {
+                let Some((token, _span_tok)) = self.tokens.peek() else {
+                    panic!("EOR ERROR IN STRUCT GENERICS")
+                };
+                match token.as_ref().unwrap() {
+                    Token::Greater => {
+                        let Some((_token, _span_tok)) = self.tokens.next() else {
+                            unreachable!()
+                        };
+
+                        break;
+                    }
+                    Token::Variable(_) => {
+                        let Some((Ok(Token::Variable(a)), span_identifier)) = self.tokens.next()
+                        else {
+                            unreachable!()
+                        };
+                        generics.push((a.clone(), span_identifier));
+                        let Some((tok, _)) = self.tokens.peek() else {
+                            panic!("EOF IN STRUCT GENERICS")
+                        };
+                        if tok.as_ref().unwrap() == &Token::Comma {
+                            let Some((_tok, _)) = self.tokens.next() else {
+                                unreachable!()
+                            };
+                        }
+                    }
+                    _ => todo!(),
+                }
+            }
+
+            // self.errors.push((
+            //     ReportKind::Error,
+            //     Report::build(ReportKind::Error, (self.file.clone(), span_name.clone()))
+            //         .with_code("NOT IMPLEMENTED")
+            //         .with_label(
+            //             Label::new((self.file.clone(), span_name.clone()))
+            //                 .with_message("STRUCT GENERICS ARE NOT IMPLEMENTED YET")
+            //                 .with_color(ColorGenerator::new().next()),
+            //         )
+            //         .with_message("TODO: STRUCT GENERICS")
+            //         .finish(),
+            // ));
+            // return (ASTNode::Error, span_name.clone());
         };
 
         loop {
@@ -91,81 +123,17 @@ impl Parser<'_> {
                     self.tokens.next();
                     break;
                 }
-                _ => todo!(),
+                x => unimplemented!("{:?}", x),
             }
         }
 
-        let Some((token, _span)) = self.tokens.peek() else {
-            return (
-                ASTNode::Struct(Struct {
-                    name: (name, span_name.clone()),
-                    fields,
-                    generics: vec![],
-                }),
-                span_struct.start..span_name.end + 1,
-            );
-            // todo!()
-        };
-        let token = token.as_ref().unwrap();
-
-        match token {
-            Token::Less => {
-                let Some((_, span)) = self.tokens.next() else {
-                    unreachable!()
-                }; // eat '<'
-                let mut generics = vec![];
-                loop {
-                    let Some((token, span)) = self.tokens.peek() else {
-                        panic!(
-                            "invalid token. no errors cuz im lazy {} {:?}",
-                            self.file, span
-                        )
-                    };
-                    let _span = span.clone();
-                    match token.as_ref().unwrap() {
-                        Token::Greater => {
-                            self.tokens.next();
-                            break;
-                        }
-                        Token::Comma => {
-                            self.tokens.next();
-                            continue;
-                        }
-                        _ => {
-                            let Some((token, _span)) = self.tokens.peek() else {
-                                unreachable!()
-                            };
-                            if let Token::Variable(_v) = token.as_ref().unwrap() {
-                                let Some((Ok(Token::Variable(v)), var_span)) = self.tokens.next()
-                                else {
-                                    panic!("invalid geneirc");
-                                };
-                                generics.push((v.to_string(), var_span))
-                            } else {
-                                panic!("invalid geneirc");
-                            }
-                        }
-                    }
-                }
-                (
-                    ASTNode::Struct(Struct {
-                        name: (name, span_name.clone()),
-                        fields,
-                        generics,
-                    }),
-                    span_struct.start..span_name.end + 1,
-                )
-            }
-            _ => (
-                ASTNode::Struct(Struct {
-                    name: (name, span_name.clone()),
-                    fields,
-                    generics: vec![],
-                }),
-                span_struct.start..span_name.end + 1,
-            ),
-        }
-
-        // todo!()
+        (
+            ASTNode::Struct(Struct {
+                name: (name, span_name.clone()),
+                fields,
+                generics,
+            }),
+            span_struct.start..span_name.end + 1,
+        )
     }
 }

@@ -27,17 +27,21 @@ impl TypeEnv<'_> {
             None => &name.1,
         };
 
+        // Create a mapping of generic parameter names
+        let generic_names: Vec<_> = generics.iter().map(|(name, _)| name.clone()).collect();
+
         let typed_fields = fields
             .iter()
             .map(|(field_name, type_annot, range)| {
-                let ty = type_annot_to_type(type_annot);
+                // Use special conversion that handles generic params
+                let ty = self.convert_type_annot(type_annot, &generic_names);
                 (field_name.to_string(), ty, range.clone())
             })
             .collect::<Vec<_>>();
 
         let struct_ty = Arc::new(StructTy {
             name: name.0.clone(),
-            generics: generics.iter().map(|(g, _)| g.clone()).collect(),
+            generics: generic_names.clone(),
             fields: typed_fields
                 .iter()
                 .map(|(name, ty, _)| (name.clone(), ty.clone()))
@@ -46,14 +50,21 @@ impl TypeEnv<'_> {
 
         self.insert_struct(name.0.clone(), struct_ty);
 
+        // Create constructor function type
+        let return_type = Arc::new(Type::Constructor {
+            name: name.0.clone(),
+            generics: generic_names
+                .iter()
+                .map(|name| Arc::new(Type::GenericParam(name.clone())))
+                .collect(),
+            traits: vec![],
+        });
+
         let function_type = Arc::new(Type::Function {
             params: typed_fields.iter().map(|(_, ty, _)| ty.clone()).collect(),
-            return_type: Arc::new(Type::Constructor {
-                name: name.0.to_string(),
-                generics: vec![],
-                traits: vec![],
-            }),
+            return_type: (return_type),
         });
+
         self.insert_var(name.0.clone(), function_type.clone()); // constructor
 
         (
@@ -64,5 +75,16 @@ impl TypeEnv<'_> {
             },
             name.1.start..last_field_span.end,
         )
+    }
+
+    fn convert_type_annot(&self, type_annot: &TypeAnnot, generic_names: &[String]) -> Arc<Type> {
+        match type_annot {
+            // Handle generic parameters
+            TypeAnnot::Boring(name) if generic_names.contains(name) => {
+                Arc::new(Type::GenericParam(name.clone()))
+            }
+            // Handle regular types
+            _ => type_annot_to_type(type_annot),
+        }
     }
 }

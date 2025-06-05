@@ -1,5 +1,11 @@
-def identity(n)
-	n
+struct Box<T>
+	val T
+end
 
-identity(1)
-identity("a")
+# def identity(n)
+#	n
+
+# identity(1)
+# identity("a")
+
+Box(1)

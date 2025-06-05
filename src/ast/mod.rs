@@ -164,7 +164,7 @@ pub enum Type {
     Trait(String),
     Function {
         params: Vec<Arc<Type>>,
-        return_type: Box<Arc<Type>>,
+        return_type: Arc<Type>,
     },
     Tuple(Vec<Arc<Type>>),
     Union(Vec<Arc<Type>>),

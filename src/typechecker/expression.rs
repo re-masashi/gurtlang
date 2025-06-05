@@ -171,7 +171,7 @@ impl TypeEnv<'_> {
                                 function: Box::new(typed_fun),
                                 args: new_args,
                             },
-                            *return_type.clone(),
+                            return_type.clone(),
                         )
                     }
                     _ => todo!(),

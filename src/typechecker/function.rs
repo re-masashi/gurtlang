@@ -48,7 +48,7 @@ impl TypeEnv<'_> {
         };
         let function_type = Arc::new(Type::Function {
             params: typed_args.iter().map(|(_, ty, _)| ty.clone()).collect(),
-            return_type: Box::new(typed_return_type.0.clone()),
+            return_type: typed_return_type.0.clone(),
         });
         self.insert_var(name.clone(), function_type.clone());
         (

@@ -46,6 +46,16 @@ impl TypeEnv<'_> {
 
         self.insert_struct(name.0.clone(), struct_ty);
 
+        let function_type = Arc::new(Type::Function {
+            params: typed_fields.iter().map(|(_, ty, _)| ty.clone()).collect(),
+            return_type: Arc::new(Type::Constructor {
+                name: name.0.to_string(),
+                generics: vec![],
+                traits: vec![],
+            }),
+        });
+        self.insert_var(name.0.clone(), function_type.clone()); // constructor
+
         (
             TypedStruct {
                 name: name.0.clone(),

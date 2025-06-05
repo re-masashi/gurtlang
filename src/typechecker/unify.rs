@@ -55,7 +55,7 @@ impl TypeEnv<'_> {
                     }
                 }
                 if f {
-                    self.unify(*r1.clone(), *r2.clone(), span1, span2)
+                    self.unify(r1.clone(), r2.clone(), span1, span2)
                 } else {
                     f
                 }

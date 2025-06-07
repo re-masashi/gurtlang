@@ -8,48 +8,7 @@ use yansi::Paint;
 
 use std::ops::Range;
 
-// const PRECEDENCE_POSTFIX: u8 = 15;
-// const PRECEDENCE_UNARY: u8 = 14;
-// const PRECEDENCE_MUL: u8 = 13;
-// const PRECEDENCE_ADD: u8 = 12;
-// const PRECEDENCE_COMP: u8 = 11;
-// const PRECEDENCE_EQ: u8 = 10;
-// const PRECEDENCE_AND: u8 = 9;
-// const PRECEDENCE_XOR: u8 = 8;
-// const PRECEDENCE_OR: u8 = 7;
-// const PRECEDENCE_ASSIGN: u8 = 6;
-
 impl Parser<'_> {
-    // fn get_infix_precedence(&self, token: &Token) -> (u8, u8) {
-    //     match token {
-    //         // Postfix
-    //         Token::LParen | Token::LBracket | Token::Dot => {
-    //             (PRECEDENCE_POSTFIX, PRECEDENCE_POSTFIX)
-    //         }
-    //         // Assignment (right-associative)
-    //         Token::Assign
-    //         | Token::AddAssign
-    //         | Token::SubAssign
-    //         | Token::MulAssign
-    //         | Token::DivAssign
-    //         | Token::ModAssign => (PRECEDENCE_ASSIGN, PRECEDENCE_ASSIGN - 1),
-    //         // Binary operators
-    //         Token::Plus => (PRECEDENCE_ADD, PRECEDENCE_ADD),
-    //         Token::Minus => (PRECEDENCE_ADD, PRECEDENCE_ADD),
-    //         Token::Mul => (PRECEDENCE_MUL, PRECEDENCE_MUL),
-    //         Token::Div => (PRECEDENCE_MUL, PRECEDENCE_MUL),
-    //         Token::Mod => (PRECEDENCE_MUL, PRECEDENCE_MUL),
-    //         Token::Eq | Token::NotEq => (PRECEDENCE_EQ, PRECEDENCE_EQ),
-    //         Token::Greater | Token::Less | Token::GreaterEq | Token::LessEq => {
-    //             (PRECEDENCE_COMP, PRECEDENCE_COMP)
-    //         }
-    //         Token::And => (PRECEDENCE_AND, PRECEDENCE_AND),
-    //         Token::Xor => (PRECEDENCE_XOR, PRECEDENCE_XOR),
-    //         Token::Or => (PRECEDENCE_OR, PRECEDENCE_OR),
-    //         _ => (0, 0), // Not an infix operator
-    //     }
-    // }
-
     pub fn parse_expression(&mut self) -> (Expr, Range<usize>) {
         let Some((token, span_expression)) = self.tokens.next() else {
             self.errors.push((

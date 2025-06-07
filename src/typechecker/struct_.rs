@@ -53,10 +53,7 @@ impl TypeEnv<'_> {
         // Create constructor function type
         let return_type = Arc::new(Type::Constructor {
             name: name.0.clone(),
-            generics: generic_names
-                .iter()
-                .map(|name| Arc::new(Type::GenericParam(name.clone())))
-                .collect(),
+            generics: vec![],
             traits: vec![],
         });
 
@@ -77,13 +74,8 @@ impl TypeEnv<'_> {
         )
     }
 
-    fn convert_type_annot(&self, type_annot: &TypeAnnot, generic_names: &[String]) -> Arc<Type> {
+    fn convert_type_annot(&self, type_annot: &TypeAnnot, _generic_names: &[String]) -> Arc<Type> {
         match type_annot {
-            // Handle generic parameters
-            TypeAnnot::Boring(name) if generic_names.contains(name) => {
-                Arc::new(Type::GenericParam(name.clone()))
-            }
-            // Handle regular types
             _ => type_annot_to_type(type_annot),
         }
     }

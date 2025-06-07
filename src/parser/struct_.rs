@@ -17,7 +17,7 @@ impl Parser<'_> {
         let mut fields = vec![];
 
         let Some((token, span_name)) = self.tokens.next() else {
-            unreachable!()
+            panic!("STRUCT NEEDS A NAME")
         };
 
         let name = if let Token::Variable(var) = token.unwrap() {

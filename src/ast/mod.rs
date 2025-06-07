@@ -168,7 +168,7 @@ pub enum Type {
     },
     Tuple(Vec<Arc<Type>>),
     Union(Vec<Arc<Type>>),
-    GenericParam(String), // JUST FOR STRUCTS AND MAYBE ENUMS LATER
+    // GenericParam(String), // JUST FOR STRUCTS AND MAYBE ENUMS LATER
     Unit,
 }
 

@@ -120,7 +120,8 @@ impl Parser<'_> {
                     ));
                 }
                 Token::KeywordEnd => {
-                    self.tokens.next();
+                    // end already 'eaten'
+                    // println!("{:?}", self.tokens.next());
                     break;
                 }
                 x => unimplemented!("{:?}", x),

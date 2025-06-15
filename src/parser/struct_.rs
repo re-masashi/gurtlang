@@ -78,20 +78,6 @@ impl Parser<'_> {
                     _ => todo!(),
                 }
             }
-
-            // self.errors.push((
-            //     ReportKind::Error,
-            //     Report::build(ReportKind::Error, (self.file.clone(), span_name.clone()))
-            //         .with_code("NOT IMPLEMENTED")
-            //         .with_label(
-            //             Label::new((self.file.clone(), span_name.clone()))
-            //                 .with_message("STRUCT GENERICS ARE NOT IMPLEMENTED YET")
-            //                 .with_color(ColorGenerator::new().next()),
-            //         )
-            //         .with_message("TODO: STRUCT GENERICS")
-            //         .finish(),
-            // ));
-            // return (ASTNode::Error, span_name.clone());
         };
 
         loop {

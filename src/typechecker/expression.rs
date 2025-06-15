@@ -48,16 +48,19 @@ impl TypeEnv<'_> {
                 let ty = if self.var_exists(name) {
                     self.get_var(name).unwrap()
                 } else {
-                    self.insert_var(name.clone(), tvar!(self.variables.len() + 1));
-                    tvar!(self.variables.len())
+                    let new_typevar = self.new_typevar();
+                    self.insert_var(name.clone(), new_typevar.clone());
+                    new_typevar
                 };
                 (TypedExprKind::Variable(name.to_string()), ty)
             }
             Expr::Array { elements } => {
                 if elements.is_empty() {
+                    let new_typevar = self.new_typevar();
+
                     (
                         TypedExprKind::Array { elements: vec![] },
-                        t_list!(tvar!(self.variables.len() + 1)),
+                        t_list!(new_typevar),
                     )
                 } else if elements.len() == 1 {
                     let (elem, span) = &elements[0];

@@ -53,7 +53,7 @@ impl TypeEnv<'_> {
         // Create constructor function type
         let return_type = Arc::new(Type::Constructor {
             name: name.0.clone(),
-            generics: vec![],
+            generics: generics.iter().map(|_| self.new_typevar()).collect(),
             traits: vec![],
         });
 

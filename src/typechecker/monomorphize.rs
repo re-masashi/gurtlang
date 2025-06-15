@@ -72,7 +72,7 @@ impl TypeEnv<'_> {
         }
     }
     /// Properly monomorphizes the AST with correct order and type replacement
-    pub fn monomorphize_ast(&self, ast: Vec<TypedASTNode>) -> Vec<TypedASTNode> {
+    pub fn monomorphize_ast(&mut self, ast: Vec<TypedASTNode>) -> Vec<TypedASTNode> {
         // First pass: collect all generic functions
         let mut generic_fns = HashMap::new();
         let mut non_generic_nodes = Vec::new();
@@ -107,7 +107,7 @@ impl TypeEnv<'_> {
     }
 
     fn process_node(
-        &self,
+        &mut self,
         node: TypedASTNode,
         generic_fns: &HashMap<String, (TypedFunction, Range<usize>)>,
         specialized_fns: &mut HashMap<String, (TypedFunction, Range<usize>)>,
@@ -133,7 +133,7 @@ impl TypeEnv<'_> {
     }
 
     fn process_expr(
-        &self,
+        &mut self,
         expr: TypedExpr,
         generic_fns: &HashMap<String, (TypedFunction, Range<usize>)>,
         specialized_fns: &mut HashMap<String, (TypedFunction, Range<usize>)>,
@@ -174,6 +174,17 @@ impl TypeEnv<'_> {
                             range: expr.range,
                         };
                     }
+                    else if let Some(struct_ty) = self.get_struct(func_name) {
+                                            if !struct_ty.generics.is_empty() {
+                                                return self.specialize_struct_constructor(
+                                                    func_name,
+                                                    &struct_ty,
+                                                    &new_args,
+                                                    expr.range,
+                                                    specialized_fns,
+                                                );
+                                            }
+                                        }
                 }
 
                 // Non-generic call
@@ -190,6 +201,110 @@ impl TypeEnv<'_> {
             _ => expr,
         }
     }
+
+    fn specialize_struct_constructor(
+            &self,
+            struct_name: &str,
+            struct_ty: &Arc<StructTy>,
+            args: &[TypedExpr],
+            call_range: Range<usize>,
+            specialized_fns: &mut HashMap<String, (TypedFunction, Range<usize>)>,
+        ) -> TypedExpr {
+            // Create type mapping from arguments to struct's generic parameters
+            let mut type_map = HashMap::new();
+            for (i, (_field_name, field_ty)) in struct_ty.fields.iter().enumerate() {
+                if let Type::Variable(id) = &**field_ty {
+                    let resolved_arg_ty = self.resolve_deep(args[i].ty.clone());
+                    type_map.insert(*id, resolved_arg_ty);
+                }
+            }
+
+            // Create specialized struct name
+            let generic_types: Vec<String> = struct_ty.generics.iter()
+                .map(|g| {
+                    println!("{:?}", g);
+                    if let Some(ty) = type_map.get(&g.parse().unwrap()) {
+                        type_signature_string(ty)
+                    } else {
+                        format!("T{}", g)
+                    }
+                })
+                .collect();
+            
+            let spec_name = if generic_types.is_empty() {
+                struct_name.to_string()
+            } else {
+                format!("{}_{}", struct_name, generic_types.join("_"))
+            };
+
+            // Create specialized return type
+            let specialized_return = Arc::new(Type::Constructor {
+                name: struct_name.to_string(),
+                generics: struct_ty.generics.iter()
+                    .filter_map(|g| g.parse().ok().and_then(|id| type_map.get(&id).cloned()))
+                    .collect(),
+                traits: vec![],
+            });
+
+            // Create the specialized constructor function if it doesn't exist
+            if !specialized_fns.contains_key(&spec_name) {
+                let constructor_func = self.create_constructor_function(struct_ty, &spec_name, &type_map);
+                specialized_fns.insert(spec_name.clone(), (constructor_func, call_range.clone()));
+            }
+
+            // Return the new call expression
+            TypedExpr {
+                kind: TypedExprKind::Call {
+                    function: Box::new(TypedExpr {
+                        kind: TypedExprKind::Variable(spec_name.clone()),
+                        ty: Arc::new(Type::Function {
+                            params: args.iter().map(|a| a.ty.clone()).collect(),
+                            return_type: specialized_return.clone(),
+                        }),
+                        range: call_range.clone(),
+                    }),
+                    args: args.to_vec(),
+                },
+                ty: specialized_return,
+                range: call_range,
+            }
+        }
+
+        fn create_constructor_function(
+            &self,
+            struct_ty: &StructTy,
+            spec_name: &str,
+            type_map: &HashMap<usize, Arc<Type>>,
+        ) -> TypedFunction {
+            // Create specialized field types
+            let specialized_fields: Vec<(String, Arc<Type>, Range<usize>)> = struct_ty.fields.iter()
+                .map(|(name, ty)| {
+                    let spec_ty = self.substitute_type(ty, type_map);
+                    (name.clone(), spec_ty, 0..0) // Dummy span
+                })
+                .collect();
+
+            // Create specialized return type
+            let specialized_return = Arc::new(Type::Constructor {
+                name: spec_name.to_string(),
+                generics: vec![],
+                traits: vec![],
+            });
+
+            // Create dummy body (will be handled during codegen)
+            let dummy_body = TypedExpr {
+                kind: TypedExprKind::Error,
+                ty: specialized_return.clone(),
+                range: 0..0,
+            };
+
+            TypedFunction {
+                name: spec_name.to_string(),
+                args: specialized_fields,
+                body: Box::new((dummy_body, 0..0)),
+                return_type: (specialized_return, 0..0),
+            }
+        }
 
     fn specialize_function_at_call(
         &self,

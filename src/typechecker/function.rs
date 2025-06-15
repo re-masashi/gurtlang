@@ -27,12 +27,9 @@ impl TypeEnv<'_> {
             .map(|(argname, typeannot, range)| match typeannot {
                 Some(ty) => (argname.to_string(), type_annot_to_type(ty), range.clone()),
                 None => {
-                    self.insert_var(argname.clone(), tvar!(self.variables.len() + 1));
-                    (
-                        argname.to_string(),
-                        tvar!(self.variables.len()),
-                        range.clone(),
-                    )
+                    let new_typevar = self.new_typevar();
+                    self.insert_var(argname.clone(), new_typevar.clone());
+                    (argname.to_string(), new_typevar, range.clone())
                 }
             })
             .collect::<Vec<_>>();

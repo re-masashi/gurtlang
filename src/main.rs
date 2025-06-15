@@ -16,7 +16,7 @@ fn main() {
     let mut parser = Parser::new(lexer, filepath.clone());
 
     let ast = parser.parse_program();
-    println!("{:#?}", ast);
+    // println!("{:#?}", ast);
 
     if parser.report_errors() {
         panic!("cant continue");
@@ -24,7 +24,6 @@ fn main() {
 
     let mut type_env = TypeEnv::new(filepath);
     let typed_ast = type_env.ast_to_typed_ast(ast);
-
 
     if type_env.report_errors() {
         panic!("cant continue. type errors");

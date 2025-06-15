@@ -13,6 +13,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::ast::{Type, TypeAnnot};
+use crate::tvar;
 
 type Error<'a> = (ReportKind<'a>, Report<'a, (String, Range<usize>)>);
 
@@ -27,6 +28,7 @@ pub struct StructTy {
 pub struct TypeEnv<'a> {
     pub variables: HashMap<String, Arc<Type>>,
     pub structs: HashMap<String, Arc<StructTy>>,
+    pub tvar_count: usize,
     substitutions: HashMap<usize, Arc<Type>>,
     errors: Vec<Error<'a>>,
     file: String,
@@ -39,6 +41,7 @@ impl TypeEnv<'_> {
             structs: HashMap::new(),
             errors: vec![],
             substitutions: HashMap::new(),
+            tvar_count: 0,
             file,
         }
     }
@@ -57,6 +60,11 @@ impl TypeEnv<'_> {
             error.print((self.file.clone(), source.clone())).unwrap();
         }
         failed
+    }
+
+    pub fn new_typevar(&mut self) -> Arc<Type> {
+        self.tvar_count += 1;
+        tvar!(self.tvar_count)
     }
 
     pub fn insert_var(&mut self, var: String, ty: Arc<Type>) {

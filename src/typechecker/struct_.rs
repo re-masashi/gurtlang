@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ use crate::ast::{
 use crate::typechecker::{StructTy, TypeEnv, type_annot_to_type};
 use crate::{t_bool, t_float, t_int, t_list, t_string, t_unit, tvar};
 
+// typechecker/struct_.rs
 impl TypeEnv<'_> {
     pub fn struct_to_typed_struct(
         &mut self,
@@ -27,21 +29,25 @@ impl TypeEnv<'_> {
             None => &name.1,
         };
 
-        // Create a mapping of generic parameter names
-        let generic_names: Vec<_> = generics.iter().map(|(name, _)| name.clone()).collect();
+        // Create mapping from generic names to type variables
+        let mut generic_map: HashMap<String, Arc<Type>> = HashMap::new();
+        for (generic_name, _) in generics {
+            let tv = self.new_typevar();
+            generic_map.insert(generic_name.clone(), tv);
+        }
 
         let typed_fields = fields
             .iter()
             .map(|(field_name, type_annot, range)| {
-                // Use special conversion that handles generic params
-                let ty = self.convert_type_annot(type_annot, &generic_names);
+                // Replace generics with type variables
+                let ty = self.convert_type_annot(type_annot, &generic_map);
                 (field_name.to_string(), ty, range.clone())
             })
             .collect::<Vec<_>>();
 
         let struct_ty = Arc::new(StructTy {
             name: name.0.clone(),
-            generics: generic_names.clone(),
+            generics: generics.iter().map(|(name, _)| name.clone()).collect(),
             fields: typed_fields
                 .iter()
                 .map(|(name, ty, _)| (name.clone(), ty.clone()))
@@ -53,16 +59,16 @@ impl TypeEnv<'_> {
         // Create constructor function type
         let return_type = Arc::new(Type::Constructor {
             name: name.0.clone(),
-            generics: generics.iter().map(|_| self.new_typevar()).collect(),
+            generics: generic_map.values().cloned().collect(),
             traits: vec![],
         });
 
         let function_type = Arc::new(Type::Function {
             params: typed_fields.iter().map(|(_, ty, _)| ty.clone()).collect(),
-            return_type: (return_type),
+            return_type,
         });
 
-        self.insert_var(name.0.clone(), function_type.clone()); // constructor
+        self.insert_var(name.0.clone(), function_type.clone());
 
         (
             TypedStruct {
@@ -74,8 +80,72 @@ impl TypeEnv<'_> {
         )
     }
 
-    fn convert_type_annot(&self, type_annot: &TypeAnnot, _generic_names: &[String]) -> Arc<Type> {
+    fn convert_type_annot(
+        &self,
+        type_annot: &TypeAnnot,
+        generic_map: &HashMap<String, Arc<Type>>,
+    ) -> Arc<Type> {
         match type_annot {
+            // Handle bare generic parameters
+            TypeAnnot::Boring(name) => {
+                generic_map.get(name)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        Arc::new(Type::Constructor {
+                            name: name.clone(),
+                            generics: vec![],
+                            traits: vec![],
+                        })
+                    })
+            }
+            
+            // Handle generic types with parameters
+            TypeAnnot::Generic(name, generics) => {
+                // First check if it's a generic parameter
+                if generic_map.contains_key(name) {
+                    generic_map[name].clone()
+                } else {
+                    let generics = generics
+                        .iter()
+                        .map(|t| self.convert_type_annot(t, generic_map))
+                        .collect();
+                    Arc::new(Type::Constructor {
+                        name: name.clone(),
+                        generics,
+                        traits: vec![],
+                    })
+                }
+            }
+            
+            // Handle other type annotations
+            TypeAnnot::Union(unions) => {
+                let unions = unions
+                    .iter()
+                    .map(|t| self.convert_type_annot(t, generic_map))
+                    .collect();
+                Arc::new(Type::Union(unions))
+            }
+            TypeAnnot::Function {
+                params,
+                return_type,
+            } => {
+                let params = params
+                    .iter()
+                    .map(|t| self.convert_type_annot(t, generic_map))
+                    .collect();
+                let return_type = self.convert_type_annot(return_type, generic_map);
+                Arc::new(Type::Function {
+                    params,
+                    return_type,
+                })
+            }
+            TypeAnnot::Tuple(tuple) => {
+                let tuple = tuple
+                    .iter()
+                    .map(|t| self.convert_type_annot(t, generic_map))
+                    .collect();
+                Arc::new(Type::Tuple(tuple))
+            }
             _ => type_annot_to_type(type_annot),
         }
     }

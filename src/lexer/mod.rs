@@ -1,5 +1,8 @@
 use logos::Logos;
 
+#[cfg(test)]
+pub mod test;
+
 #[derive(Logos, Debug, PartialEq)]
 #[logos(skip r"[ \n\r\t\f]+")] // Ignore this regex pattern between tokens
 #[logos(skip r"#(.*)\n")] // Ignore this regex pattern between tokens
@@ -25,9 +28,9 @@ pub enum Token {
         s[1..s.len()-1]
             .replace("\\\"", "\"")
             .replace("\\\\", "\\")
-            .replace("\\\n", "\n")
-            .replace("\\\r", "\r")
-            .replace("\\\t", "\t")
+            .replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\t", "\t")
         // Removes quotes and handle escape sequences
     })]
     String(String),

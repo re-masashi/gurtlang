@@ -12,11 +12,29 @@ fn main() {
     let contents =
         fs::read_to_string(&filepath).expect("Should have been able to read the file :/");
 
+    let mut lexer = Token::lexer(&contents).spanned();
+    let mut has_lex_errors = false;
+    while let Some((token, _)) = lexer.next() {
+        if token.is_err() {
+            has_lex_errors = true;
+            let span = lexer.span();
+            println!(
+                "Lexer error at {}:{}: Invalid token '{}'",
+                filepath,
+                span.start,
+                &contents[span.clone()]
+            );
+        }
+    }
+
+    if has_lex_errors {
+        panic!("Cannot continue due to lexer errors");
+    }
+
     let lexer = Token::lexer(&contents).spanned().peekable();
     let mut parser = Parser::new(lexer, filepath.clone());
 
     let ast = parser.parse_program();
-    // println!("{:#?}", ast);
 
     if parser.report_errors() {
         panic!("cant continue");

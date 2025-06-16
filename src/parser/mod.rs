@@ -2,6 +2,9 @@ pub mod expression;
 pub mod function;
 pub mod struct_;
 
+#[cfg(test)]
+pub mod test;
+
 use crate::ast::ASTNode;
 use crate::lexer::Token;
 use ariadne::ColorGenerator;
@@ -56,6 +59,11 @@ impl<'a> Parser<'a> {
             match token.as_ref().unwrap() {
                 Token::KeywordStruct => tree.push(self.parse_struct()),
                 Token::KeywordDef => tree.push(self.parse_function()),
+                Token::Semicolon => {
+                    // Consume empty semicolons
+                    self.tokens.next();
+                    continue;
+                }
                 _ => {
                     let (expr, span) = self.parse_expression();
                     tree.push((ASTNode::Expr((expr, span.clone())), span))

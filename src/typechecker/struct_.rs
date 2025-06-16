@@ -87,18 +87,14 @@ impl TypeEnv<'_> {
     ) -> Arc<Type> {
         match type_annot {
             // Handle bare generic parameters
-            TypeAnnot::Boring(name) => {
-                generic_map.get(name)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        Arc::new(Type::Constructor {
-                            name: name.clone(),
-                            generics: vec![],
-                            traits: vec![],
-                        })
-                    })
-            }
-            
+            TypeAnnot::Boring(name) => generic_map.get(name).cloned().unwrap_or_else(|| {
+                Arc::new(Type::Constructor {
+                    name: name.clone(),
+                    generics: vec![],
+                    traits: vec![],
+                })
+            }),
+
             // Handle generic types with parameters
             TypeAnnot::Generic(name, generics) => {
                 // First check if it's a generic parameter
@@ -116,7 +112,7 @@ impl TypeEnv<'_> {
                     })
                 }
             }
-            
+
             // Handle other type annotations
             TypeAnnot::Union(unions) => {
                 let unions = unions

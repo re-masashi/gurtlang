@@ -288,24 +288,6 @@ impl<'a> Parser<'a> {
 
             let type_annot = self.parse_type_annotation(span.clone())?;
 
-            self.errors.push((
-                ReportKind::Warning,
-            Report::build(
-                ReportKind::Warning,
-                (self.file.clone(), span.clone()),
-            )
-            .with_code("Unimplemented")
-            .with_label(
-                Label::new((self.file.clone(), span.clone()))
-                    .with_message(
-                        "type annotations cannot be parsed yet.",
-                    )
-                    .with_color(ColorGenerator::new().next()),
-            )
-            .with_note(function_syntax())
-            .with_message("found an argument with a type annotation in function definition. type annotations are not fully supported yet")
-            .finish(),
-        ));
             Ok((arg_name.to_string(), Some(type_annot), span))
         } else {
             Ok((arg_name.to_string(), None, span))

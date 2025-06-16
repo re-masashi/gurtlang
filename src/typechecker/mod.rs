@@ -5,6 +5,9 @@ pub mod resolve;
 pub mod struct_;
 pub mod unify;
 
+#[cfg(test)]
+pub mod test;
+
 use ariadne::{Report, ReportKind, Source};
 
 use std::collections::HashMap;

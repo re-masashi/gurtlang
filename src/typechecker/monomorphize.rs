@@ -238,7 +238,8 @@ impl TypeEnv<'_> {
         // Create the specialized constructor function
         let spec_name = struct_name.to_string();
         if !specialized_fns.contains_key(&spec_name) {
-            let constructor_func = self.create_constructor_function(struct_ty, &spec_name, &type_map);
+            let constructor_func =
+                self.create_constructor_function(struct_ty, &spec_name, &type_map);
             specialized_fns.insert(spec_name.clone(), (constructor_func, call_range.clone()));
         }
 

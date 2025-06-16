@@ -394,7 +394,9 @@ impl Parser<'_> {
                 } // call
 
                 Token::Dot => {
-                    let Some((_, span_dot)) = self.tokens.next() else { unreachable!() }; // eat the dot
+                    let Some((_, span_dot)) = self.tokens.next() else {
+                        unreachable!()
+                    }; // eat the dot
                     let Some((token, span)) = self.tokens.next() else {
                         self.errors.push((
                             ReportKind::Error,
@@ -416,7 +418,7 @@ impl Parser<'_> {
 
                     // Destructure the current expression
                     let (expr_kind, expr_span) = l_expr;
-                    
+
                     if let Token::Variable(field_name) = token.unwrap() {
                         l_expr = (
                             Expr::StructAccess {
@@ -429,18 +431,15 @@ impl Parser<'_> {
                     } else {
                         self.errors.push((
                             ReportKind::Error,
-                            Report::build(
-                                ReportKind::Error,
-                                (self.file.clone(), span.clone()),
-                            )
-                            .with_code("SyntaxError")
-                            .with_label(
-                                Label::new((self.file.clone(), span.clone()))
-                                    .with_message("expected field name after '.'")
-                                    .with_color(ColorGenerator::new().next()),
-                            )
-                            .with_message("invalid field access")
-                            .finish(),
+                            Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
+                                .with_code("SyntaxError")
+                                .with_label(
+                                    Label::new((self.file.clone(), span.clone()))
+                                        .with_message("expected field name after '.'")
+                                        .with_color(ColorGenerator::new().next()),
+                                )
+                                .with_message("invalid field access")
+                                .finish(),
                         ));
                         l_expr = (Expr::Error, span);
                     }
@@ -901,11 +900,13 @@ impl Parser<'_> {
                     self.tokens.next();
                     continue;
                 }
-                Token::KeywordEnd => return {
-                    self.tokens.next();
-                    
-                    (Expr::Do { expressions }, span_expression)
-                },
+                Token::KeywordEnd => {
+                    return {
+                        self.tokens.next();
+
+                        (Expr::Do { expressions }, span_expression)
+                    };
+                }
                 _ => expressions.push(self.parse_expression()),
             }
         }

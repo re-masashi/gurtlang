@@ -151,8 +151,6 @@ fn test_parse_method_call() {
         assert!(matches!(args[0].0, Expr::Int(42)));
         assert!(matches!(args[1].0, Expr::Int(32)));
         assert!(matches!(args[2].0, Expr::Int(32)))
-
-
     }
 }
 

@@ -83,7 +83,7 @@ impl<'a> Parser<'a> {
             return (ASTNode::Error, span_function);
         };
 
-        let Some((token, span_starting_paren)) = self.tokens.next() else {
+        let Some((token, _span_starting_paren)) = self.tokens.next() else {
             self.errors.push((
                 ReportKind::Error,
                 Report::build(

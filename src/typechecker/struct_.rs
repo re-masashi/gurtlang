@@ -40,7 +40,7 @@ impl TypeEnv<'_> {
             .iter()
             .map(|(field_name, type_annot, range)| {
                 // Replace generics with type variables
-                let ty = self.convert_type_annot(type_annot, &generic_map);
+                let ty = convert_type_annot(type_annot, &generic_map);
                 (field_name.to_string(), ty, range.clone())
             })
             .collect::<Vec<_>>();
@@ -79,70 +79,70 @@ impl TypeEnv<'_> {
             name.1.start..last_field_span.end,
         )
     }
+}
 
-    fn convert_type_annot(
-        &self,
-        type_annot: &TypeAnnot,
-        generic_map: &HashMap<String, Arc<Type>>,
-    ) -> Arc<Type> {
-        match type_annot {
-            // Handle bare generic parameters
-            TypeAnnot::Boring(name) => generic_map.get(name).cloned().unwrap_or_else(|| {
+fn convert_type_annot(
+    // &self,
+    type_annot: &TypeAnnot,
+    generic_map: &HashMap<String, Arc<Type>>,
+) -> Arc<Type> {
+    match type_annot {
+        // Handle bare generic parameters
+        TypeAnnot::Boring(name) => generic_map.get(name).cloned().unwrap_or_else(|| {
+            Arc::new(Type::Constructor {
+                name: name.clone(),
+                generics: vec![],
+                traits: vec![],
+            })
+        }),
+
+        // Handle generic types with parameters
+        TypeAnnot::Generic(name, generics) => {
+            // First check if it's a generic parameter
+            if generic_map.contains_key(name) {
+                generic_map[name].clone()
+            } else {
+                let generics = generics
+                    .iter()
+                    .map(|t| convert_type_annot(t, generic_map))
+                    .collect();
                 Arc::new(Type::Constructor {
                     name: name.clone(),
-                    generics: vec![],
+                    generics,
                     traits: vec![],
                 })
-            }),
-
-            // Handle generic types with parameters
-            TypeAnnot::Generic(name, generics) => {
-                // First check if it's a generic parameter
-                if generic_map.contains_key(name) {
-                    generic_map[name].clone()
-                } else {
-                    let generics = generics
-                        .iter()
-                        .map(|t| self.convert_type_annot(t, generic_map))
-                        .collect();
-                    Arc::new(Type::Constructor {
-                        name: name.clone(),
-                        generics,
-                        traits: vec![],
-                    })
-                }
             }
+        }
 
-            // Handle other type annotations
-            TypeAnnot::Union(unions) => {
-                let unions = unions
-                    .iter()
-                    .map(|t| self.convert_type_annot(t, generic_map))
-                    .collect();
-                Arc::new(Type::Union(unions))
-            }
-            TypeAnnot::Function {
+        // Handle other type annotations
+        TypeAnnot::Union(unions) => {
+            let unions = unions
+                .iter()
+                .map(|t| convert_type_annot(t, generic_map))
+                .collect();
+            Arc::new(Type::Union(unions))
+        }
+        TypeAnnot::Function {
+            params,
+            return_type,
+        } => {
+            let params = params
+                .iter()
+                .map(|t| convert_type_annot(t, generic_map))
+                .collect();
+            let return_type = convert_type_annot(return_type, generic_map);
+            Arc::new(Type::Function {
                 params,
                 return_type,
-            } => {
-                let params = params
-                    .iter()
-                    .map(|t| self.convert_type_annot(t, generic_map))
-                    .collect();
-                let return_type = self.convert_type_annot(return_type, generic_map);
-                Arc::new(Type::Function {
-                    params,
-                    return_type,
-                })
-            }
-            TypeAnnot::Tuple(tuple) => {
-                let tuple = tuple
-                    .iter()
-                    .map(|t| self.convert_type_annot(t, generic_map))
-                    .collect();
-                Arc::new(Type::Tuple(tuple))
-            }
-            _ => type_annot_to_type(type_annot),
+            })
         }
+        TypeAnnot::Tuple(tuple) => {
+            let tuple = tuple
+                .iter()
+                .map(|t| convert_type_annot(t, generic_map))
+                .collect();
+            Arc::new(Type::Tuple(tuple))
+        }
+        _ => type_annot_to_type(type_annot),
     }
 }

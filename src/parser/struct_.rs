@@ -1,3 +1,7 @@
+use crate::ast::Enum;
+use crate::ast::EnumVariant;
+use crate::ast::EnumVariantKind;
+use crate::ast::TypeAlias;
 use crate::ast::{ASTNode, Struct};
 use crate::lexer::Token;
 use crate::parser::Parser;
@@ -122,5 +126,180 @@ impl Parser<'_> {
             }),
             span_struct.start..span_name.end + 1,
         )
+    }
+
+    pub fn parse_enum(&mut self) -> (ASTNode, Range<usize>) {
+        let Some((_token, start_span)) = self.tokens.next() else {
+            unreachable!()
+        };
+        // Parse enum name
+        let (name, name_span) = match self.tokens.next() {
+            Some((Ok(Token::Variable(name)), span)) => (name, span.clone()),
+            _ => {
+                // Error handling
+                return (ASTNode::Error, start_span);
+            }
+        };
+
+        // Parse generics
+        let mut generics = vec![];
+        if let Some((Ok(Token::Less), _)) = self.tokens.peek() {
+            self.tokens.next(); // Consume '<'
+            while let Some((Ok(Token::Variable(generic)), span)) = self.tokens.next() {
+                generics.push((generic, span.clone()));
+                match self.tokens.peek() {
+                    Some((Ok(Token::Comma), _)) => self.tokens.next(),
+                    Some((Ok(Token::Greater), _)) => {
+                        self.tokens.next(); // Consume '>'
+                        break;
+                    }
+                    _ => break,
+                };
+            }
+        }
+
+        // Parse variants
+        let mut variants = vec![];
+        while let Some((token, _)) = self.tokens.peek() {
+            if let Token::KeywordEnd = token.as_ref().unwrap() {
+                break;
+            }
+
+            let (variant_name, variant_span) = match self.tokens.next() {
+                Some((Ok(Token::Variable(name)), span)) => (name, span.clone()),
+                _ => continue, // Skip to next variant on error
+            };
+
+            let kind = if let Some((Ok(Token::LParen), _)) = self.tokens.peek() {
+                let Some((_, paren_span)) = self.tokens.next() else {
+                    unreachable!()
+                }; // Consume '('
+                let mut types = vec![];
+                while let Some((token, _span)) = self.tokens.peek() {
+                    if let Token::RParen = token.as_ref().unwrap() {
+                        self.tokens.next(); // Consume ')'
+                        break;
+                    }
+
+                    let type_annot = self.parse_type_annotation(paren_span.clone()).unwrap();
+                    types.push((type_annot, paren_span.clone()));
+
+                    if let Some((Ok(Token::Comma), _)) = self.tokens.peek() {
+                        self.tokens.next();
+                    }
+                }
+                EnumVariantKind::Tuple(types)
+            } else if let Some((Ok(Token::LBrace), _)) = self.tokens.peek() {
+                self.tokens.next(); // Consume '{'
+                let mut fields = vec![];
+                while let Some((token, _)) = self.tokens.peek() {
+                    if let Token::RBrace = token.as_ref().unwrap() {
+                        self.tokens.next(); // Consume '}'
+                        break;
+                    }
+
+                    let (field_name, field_span) = match self.tokens.next() {
+                        Some((Ok(Token::Variable(name)), span)) => (name, span.clone()),
+                        _ => continue,
+                    };
+
+                    if let Some((Ok(Token::Colon), _span)) = self.tokens.peek() {
+                        let Some((_, span)) = self.tokens.next() else {
+                            unreachable!()
+                        };
+                        let type_annot = self.parse_type_annotation(span.clone()).unwrap();
+                        fields.push((field_name, type_annot, field_span));
+                    }
+
+                    if let Some((Ok(Token::Comma), _)) = self.tokens.peek() {
+                        self.tokens.next();
+                    }
+                }
+                EnumVariantKind::Struct(fields)
+            } else {
+                EnumVariantKind::Unit
+            };
+
+            variants.push(EnumVariant {
+                name: (variant_name, name_span.clone()),
+                kind,
+                range: variant_span,
+            });
+
+            if let Some((Ok(Token::Comma), _)) = self.tokens.peek() {
+                self.tokens.next();
+            }
+        }
+
+        // Consume 'end'
+        let end_span = if let Some((_, span)) = self.tokens.next() {
+            span.clone()
+        } else {
+            start_span.end..start_span.end
+        };
+
+        let full_span = start_span.start..end_span.end;
+        (
+            ASTNode::Enum(
+                Enum {
+                    name: (name, name_span),
+                    generics,
+                    variants,
+                },
+                full_span.clone(),
+            ),
+            full_span,
+        )
+    }
+
+    pub fn parse_type_alias(&mut self) -> (ASTNode, Range<usize>) {
+        let Some((_token, start_span)) = self.tokens.next() else {
+            unreachable!()
+        };
+        // Parse alias name
+        let (name, name_span) = match self.tokens.next() {
+            Some((Ok(Token::Variable(name)), span)) => (name, span.clone()),
+            _ => return (ASTNode::Error, start_span),
+        };
+
+        // Parse generics
+        let mut generics = vec![];
+        if let Some((Ok(Token::Less), _)) = self.tokens.peek() {
+            self.tokens.next(); // Consume '<'
+            while let Some((Ok(Token::Variable(generic)), span)) = self.tokens.next() {
+                generics.push((generic, span.clone()));
+                match self.tokens.peek() {
+                    Some((Ok(Token::Comma), _)) => self.tokens.next(),
+                    Some((Ok(Token::Greater), _)) => {
+                        self.tokens.next(); // Consume '>'
+                        break;
+                    }
+                    _ => break,
+                };
+            }
+        }
+
+        // Parse '='
+        if let Some((Ok(Token::Assign), span)) = self.tokens.next() {
+            let aliased_type = self.parse_type_annotation(span.clone()).unwrap();
+            let end_span = span.end..span.end;
+            let full_span = start_span.start..end_span.end;
+
+            (
+                ASTNode::TypeAlias(
+                    TypeAlias {
+                        name: (name, name_span),
+                        generics,
+                        aliased_type: Box::new(aliased_type),
+                        range: full_span.clone(),
+                    },
+                    full_span.clone(),
+                ),
+                full_span,
+            )
+        } else {
+            // Error handling
+            (ASTNode::Error, start_span)
+        }
     }
 }

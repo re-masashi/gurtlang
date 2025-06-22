@@ -34,6 +34,7 @@ impl TypeEnv<'_> {
                 let (typed_struct, span) = self.struct_to_typed_struct((&struct_, &dummy_span));
                 TypedASTNode::Struct((typed_struct, span))
             }
+            ASTNode::Enum(_, _) | ASTNode::TypeAlias(_, _) => todo!(),
         }
     }
 
@@ -84,8 +85,7 @@ impl TypeEnv<'_> {
                         let (elem, span) = elem;
                         let typed = self.expr_to_typed_expr((elem, span));
                         let _ =
-                            self.unify(val_ty.clone(), typed.ty.clone(), &val_span, &typed.range)
-                                || todo!("AAAA! INVALID ARRAY ELEM");
+                            self.unify(val_ty.clone(), typed.ty.clone(), &val_span, &typed.range);
                         new_elems.push(typed);
 
                         for (elem, span) in elements.iter().skip(2) {
@@ -96,7 +96,7 @@ impl TypeEnv<'_> {
                                 typed.ty.clone(),
                                 &val_span,
                                 &typed.range,
-                            ) || todo!("AAAA! INVALID ARRAY ELEM");
+                            );
                             new_elems.push(typed);
                         }
                     }
@@ -321,7 +321,7 @@ impl TypeEnv<'_> {
                             r_value_typed.ty.clone(),
                             l_span,
                             r_span,
-                        ) || todo!("AAAAA! INVALID BinOp TYPES");
+                        );
                         l_value_typed.ty.clone()
                     }
                 };
@@ -340,8 +340,7 @@ impl TypeEnv<'_> {
                 let typed_expr = self.expr_to_typed_expr((expr, span));
                 let ty = typed_expr.ty.clone();
                 if matches!(unop, UnOp::Not) {
-                    let _ = self.unify(ty.clone(), t_bool!(), span, span)
-                        || todo!("NOT OPERAND MUST BE A BOOL");
+                    let _ = self.unify(ty.clone(), t_bool!(), span, span);
                 }
                 (
                     TypedExprKind::UnOp {
@@ -387,7 +386,7 @@ impl TypeEnv<'_> {
                     r_value_typed.ty.clone(),
                     l_span,
                     r_span,
-                ) || todo!("AAAA! INVALID ASSIGNMENT TYPES");
+                );
 
                 (
                     TypedExprKind::Assign {
@@ -432,8 +431,7 @@ impl TypeEnv<'_> {
 
                 self.insert_var(var.clone(), var_ty.clone());
 
-                let _ = self.unify(var_ty, ty.clone(), val_span, var_span)
-                    || todo!("AAAAAAAAA INVALID LET TYPE");
+                let _ = self.unify(var_ty, ty.clone(), val_span, var_span);
 
                 (
                     TypedExprKind::Let {
@@ -459,7 +457,7 @@ impl TypeEnv<'_> {
                     t_bool!(),
                     condition_span,
                     condition_span,
-                ) || todo!("AAAAAA! IF CONDITION MUST BE A BOOL");
+                );
 
                 match else_branch {
                     Some(else_branch) => {
@@ -472,7 +470,7 @@ impl TypeEnv<'_> {
                             typed_else_branch.ty.clone(),
                             if_branch_span,
                             else_branch_span,
-                        ) || todo!("AAA! IF AND ELSE BRANCH HAVE DIFF TYPES");
+                        );
                         (
                             TypedExprKind::IfElse {
                                 condition: Box::new(typed_condition),
@@ -507,6 +505,7 @@ impl TypeEnv<'_> {
                     Arc::new(Type::Tuple(types)),
                 )
             }
+            Expr::EnumVariant { .. } | Expr::Match { .. } => todo!(),
             Expr::Error => unreachable!(),
         };
         TypedExpr {

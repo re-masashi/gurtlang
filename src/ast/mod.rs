@@ -7,10 +7,14 @@ pub enum ASTNode {
     Expr((Expr, Range<usize>)),
     Function(Function),
     Struct(Struct),
+    Enum(Enum, Range<usize>),
+    TypeAlias(TypeAlias, Range<usize>),
     Error, // dummy node for error recovery
 }
 
-#[derive(Debug)]
+type EnumFields = Vec<(Option<String>, (Expr, Range<usize>))>;
+
+#[derive(Debug, Clone)]
 pub enum Expr {
     Bool(bool),
     Int(i64),
@@ -79,6 +83,18 @@ pub enum Expr {
 
     Tuple(Vec<(Expr, Range<usize>)>),
 
+    EnumVariant {
+        enum_name: String,
+        variant_name: String,
+        fields: EnumFields, // Vec<(Option<String>, (Expr, Range<usize>))>,
+        range: Range<usize>,
+    },
+    Match {
+        expr: Box<(Expr, Range<usize>)>,
+        arms: Vec<MatchArm>,
+        range: Range<usize>,
+    },
+
     Error, // dummy node for error recovery
 }
 
@@ -136,7 +152,58 @@ pub struct Struct {
     pub fields: Vec<(String, TypeAnnot, Range<usize>)>,
 }
 
+#[derive(Debug, Clone)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub body: Box<(Expr, Range<usize>)>,
+    pub range: Range<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    Variable(String),
+    EnumVariant {
+        enum_name: Option<String>,
+        variant_name: String,
+        subpatterns: Vec<(Pattern, Range<usize>)>,
+    },
+    Union(Vec<(Pattern, Range<usize>)>),
+    Tuple(Vec<(Pattern, Range<usize>)>),
+    Literal(Expr), // For bool/int/float
+    Wildcard,      // _
+    Error,         // placeholder
+}
+
 #[derive(Debug)]
+pub struct Enum {
+    pub name: (String, Range<usize>),
+    pub generics: Vec<(String, Range<usize>)>,
+    pub variants: Vec<EnumVariant>,
+}
+
+#[derive(Debug)]
+pub struct EnumVariant {
+    pub name: (String, Range<usize>),
+    pub kind: EnumVariantKind,
+    pub range: Range<usize>,
+}
+
+#[derive(Debug)]
+pub enum EnumVariantKind {
+    Unit,
+    Tuple(Vec<(TypeAnnot, Range<usize>)>),
+    Struct(Vec<(String, TypeAnnot, Range<usize>)>),
+}
+
+#[derive(Debug)]
+pub struct TypeAlias {
+    pub name: (String, Range<usize>),
+    pub generics: Vec<(String, Range<usize>)>,
+    pub aliased_type: Box<TypeAnnot>,
+    pub range: Range<usize>,
+}
+
+#[derive(Debug, Clone)]
 pub enum TypeAnnot {
     Bool,
     Int,
@@ -246,7 +313,49 @@ pub enum TypedExprKind {
 
     Tuple(Vec<TypedExpr>),
 
+    EnumVariant {
+        enum_name: String,
+        variant_name: String,
+        fields: Vec<(Option<String>, TypedExpr)>,
+    },
+
+    Match {
+        expr: Box<TypedExpr>,
+        arms: Vec<TypedMatchArm>,
+    },
+
     Error, // dummy node for error recovery
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedMatchArm {
+    pub pattern: TypedPattern,
+    pub body: Box<TypedExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedPattern {
+    Variable(String, Arc<Type>),
+    EnumVariant {
+        enum_name: String,
+        variant_name: String,
+        subpatterns: Vec<TypedPattern>,
+    },
+    Union(Vec<TypedPattern>),
+
+    Tuple(Vec<TypedPattern>),
+    Literal(TypedExpr),
+    Wildcard,
+    Error,
+    // ill add other patterns
+}
+
+#[derive(Debug)]
+pub struct TypedTypeAlias {
+    pub name: String,
+    pub generics: Vec<(String, Range<usize>)>,
+    pub aliased_type: Arc<Type>,
+    pub range: Range<usize>,
 }
 
 #[derive(Debug)]
@@ -254,6 +363,8 @@ pub enum TypedASTNode {
     Expr((TypedExpr, Range<usize>)),
     Function((TypedFunction, Range<usize>)),
     Struct((TypedStruct, Range<usize>)),
+    Enum((TypedEnum, Range<usize>)),
+    // type aliases are omitted here
     Error, // dummy node for error recovery
 }
 
@@ -270,6 +381,27 @@ pub struct TypedStruct {
     pub name: String,
     pub generics: Vec<(String, Range<usize>)>, // only boring types?
     pub fields: Vec<(String, Arc<Type>, Range<usize>)>,
+}
+
+#[derive(Debug)]
+pub struct TypedEnum {
+    pub name: String,
+    pub generics: Vec<(String, Range<usize>)>,
+    pub variants: Vec<TypedEnumVariant>,
+}
+
+#[derive(Debug)]
+pub struct TypedEnumVariant {
+    pub name: String,
+    pub kind: TypedEnumVariantKind,
+    pub range: Range<usize>,
+}
+
+#[derive(Debug)]
+pub enum TypedEnumVariantKind {
+    Unit,
+    Tuple(Vec<Arc<Type>>),
+    Struct(Vec<(String, Arc<Type>)>),
 }
 
 impl TypedFunction {

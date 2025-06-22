@@ -130,6 +130,9 @@ pub enum Token {
     #[token(".")]
     Dot,
 
+    #[token("::")]
+    Access,
+
     #[token("let")]
     KeywordLet,
 
@@ -153,6 +156,32 @@ pub enum Token {
 
     #[token("end")]
     KeywordEnd,
+
+    #[token("enum")]
+    KeywordEnum,
+
+    #[token("type")]
+    KeywordType,
+
+    #[token("match")]
+    KeywordMatch,
+
+    #[token("case")]
+    KeywordCase, // If using case-style pattern matching
+
+    // New tokens for pattern matching
+    #[token("=>")]
+    FatArrow, // For match arms
+
+    #[token("_", priority = 3)]
+    Underscore, // Wildcard pattern
+
+    // New tokens for type definitions
+    #[token("{")]
+    LBrace,
+
+    #[token("}")]
+    RBrace,
 
     #[token("|")]
     Union,

@@ -1,4 +1,6 @@
 use crate::ast::BinOp;
+use crate::ast::MatchArm;
+use crate::ast::Pattern;
 use crate::ast::{AssignOp, Expr, UnOp};
 use crate::lexer::Token;
 use crate::parser::Parser;
@@ -124,6 +126,10 @@ impl Parser<'_> {
             Token::KeywordDo => return self.parse_do(span_expression),
             Token::KeywordIf => return self.parse_if(span_expression),
 
+            // Token::KeywordEnum => return self.parse_enum(span_expression),
+            // Token::KeywordType => return self.parse_type_alias(span_expression),
+            Token::KeywordMatch => return self.parse_match(span_expression),
+
             // unary ops
             Token::Not => (
                 Expr::UnOp {
@@ -150,7 +156,8 @@ impl Parser<'_> {
             Token::LBracket => {
                 let mut elements = vec![];
                 let start_span = span_expression.clone();
-                let mut end_span = span_expression.end..span_expression.end;
+                let end_span;
+                // = span_expression.end..span_expression.end;
 
                 // Check for empty array
                 if let Some((token, _span)) = self.tokens.peek() {
@@ -977,6 +984,146 @@ impl Parser<'_> {
                 },
                 span.clone(),
             )
+        }
+    }
+
+    pub fn parse_match(&mut self, start_span: Range<usize>) -> (Expr, Range<usize>) {
+        // Parse the expression to match against
+        let expr = self.parse_expression();
+        let mut arms = vec![];
+        let mut end_span = expr.1.end..expr.1.end;
+
+        // Parse match arms
+        while let Some((token, _span_end)) = self.tokens.peek() {
+            if let Token::KeywordEnd = token.as_ref().unwrap() {
+                break;
+            }
+
+            // Parse patterns
+            let mut patterns = vec![self.parse_pattern()];
+            while let Some((Ok(Token::Union), _)) = self.tokens.peek() {
+                self.tokens.next(); // Consume '|'
+                patterns.push(self.parse_pattern());
+            }
+
+            // Parse '=>'
+            if let Some((Ok(Token::FatArrow), _)) = self.tokens.next() {
+                let body = self.parse_expression();
+                end_span = body.1.clone();
+                arms.push(MatchArm {
+                    pattern: Pattern::Union(patterns.clone()),
+                    body: Box::new(body.clone()),
+                    range: patterns[0].1.start..body.1.end,
+                });
+
+                // Consume comma if present
+                if let Some((Ok(Token::Comma), _)) = self.tokens.peek() {
+                    self.tokens.next();
+                }
+            } else {
+                // Error handling
+                break;
+            }
+        }
+
+        // Consume 'end'
+        if let Some((_, span)) = self.tokens.next() {
+            end_span = span.clone();
+        }
+
+        let full_span = start_span.start..end_span.end;
+        (
+            Expr::Match {
+                expr: Box::new(expr),
+                arms,
+                range: full_span.clone(),
+            },
+            full_span,
+        )
+    }
+
+    // Helper functions
+    pub fn parse_pattern(&mut self) -> (Pattern, Range<usize>) {
+        let (token, span) = match self.tokens.next() {
+            Some((Ok(token), span)) => (token, span.clone()),
+            _ => return (Pattern::Error, 0..0),
+        };
+
+        match token {
+            Token::Underscore => (Pattern::Wildcard, span),
+            Token::Variable(name) => {
+                if let Some((Ok(Token::Access), _)) = self.tokens.peek() {
+                    let Some((_, _span)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    let Some((Ok(Token::Variable(variant)), _span)) = self.tokens.next() else {
+                        panic!("invalid syntax. expected an identifier after '::'");
+                    };
+                    // Check if it's an enum variant pattern
+                    if let Some((Ok(Token::LParen), _)) = self.tokens.peek() {
+                        self.tokens.next(); // Consume '('
+                        let mut subpatterns = vec![];
+                        while let Some((token, _)) = self.tokens.peek() {
+                            if let Token::RParen = token.as_ref().unwrap() {
+                                self.tokens.next(); // Consume ')'
+                                break;
+                            }
+
+                            subpatterns.push(self.parse_pattern());
+
+                            if let Some((Ok(Token::Comma), _)) = self.tokens.peek() {
+                                self.tokens.next();
+                            }
+                        }
+                        (
+                            Pattern::EnumVariant {
+                                enum_name: Some(variant),
+                                variant_name: name,
+                                subpatterns,
+                            },
+                            span.start..span.end,
+                        )
+                    } else {
+                        (
+                            Pattern::EnumVariant {
+                                enum_name: Some(variant),
+                                variant_name: name,
+                                subpatterns: vec![],
+                            },
+                            span.start..span.end,
+                        )
+                    }
+                } else {
+                    (Pattern::Variable(name), span)
+                }
+            }
+            Token::Bool(b) => (Pattern::Literal(Expr::Bool(b)), span),
+            Token::Int(i) => (Pattern::Literal(Expr::Int(i)), span),
+            Token::Float(f) => (Pattern::Literal(Expr::Float(f)), span),
+            Token::String(s) => (Pattern::Literal(Expr::String(s)), span),
+            Token::LParen => {
+                let mut patterns = vec![];
+                let mut end_span = span.end..span.end;
+                let _ = end_span; // stops clippy from screaming at my face 'oVerWritteN bEfoRe being read'
+
+                loop {
+                    patterns.push(self.parse_pattern());
+                    end_span = patterns.last().unwrap().1.clone();
+
+                    match self.tokens.peek() {
+                        Some((Ok(Token::Comma), _)) => self.tokens.next(),
+                        Some((Ok(Token::RParen), _end)) => {
+                            self.tokens.next();
+                            // end_span = end.clone();
+                            break;
+                        }
+                        _ => break,
+                    };
+                }
+
+                (Pattern::Tuple(patterns), span.start..end_span.end)
+            }
+            _ => (Pattern::Error, span),
         }
     }
 }

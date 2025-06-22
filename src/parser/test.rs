@@ -88,8 +88,8 @@ fn test_parse_index() {
 #[test]
 fn test_parse_function_call() {
     let (ast, parser) = parse_str("foo(1, 2, 3)");
-    println!("{:#?}", ast);
-    println!("{:#?}", parser.errors);
+    // println!("{:#?}", ast);
+    // println!("{:#?}", parser.errors);
     assert!(parser.errors.is_empty());
 
     if let ASTNode::Expr((Expr::Call { function, args }, _)) = &ast[0].0 {
@@ -230,7 +230,7 @@ fn test_parse_assignments() {
 #[test]
 fn test_parse_do_block() {
     let (ast, parser) = parse_str("do 1+1 2; 3 end");
-    println!("{:#?}", parser.errors);
+    // println!("{:#?}", parser.errors);
     assert!(parser.errors.is_empty());
 
     if let ASTNode::Expr((Expr::Do { expressions }, _)) = &ast[0].0 {
@@ -242,7 +242,7 @@ fn test_parse_do_block() {
 fn test_parse_let_statement() {
     // NO NEED TO PUT '=' IF YOU ARE USING A TYPE ANNOTATION. THIS IS A FEATURE NOW
     let (ast, parser) = parse_str("let x: int 5 let y = 10");
-    println!("{:#?}", ast);
+    // println!("{:#?}", ast);
     assert!(parser.errors.is_empty());
     assert_eq!(ast.len(), 2);
 
@@ -408,4 +408,55 @@ fn test_error_recovery() {
     // Next nodes should still parse
     if let ASTNode::Expr((Expr::Int(42), _)) = ast[1].0 {}
     if let ASTNode::Struct { .. } = ast[2].0 {}
+}
+
+#[test]
+fn test_parse_match() {
+    let (ast, parser) = parse_str(
+        "
+        match abcd 
+            A::Pat1(a, _) | _ => print(1),
+            (_, b) => println(-1),
+            _=>print(0),
+        end
+    ",
+    );
+    // println!("{:#?}", parser.errors);
+
+    // println!("{:#?}", ast);
+    assert!(parser.errors.is_empty());
+    assert_eq!(ast.len(), 1);
+}
+
+#[test]
+fn test_parse_enum() {
+    let (ast, parser) = parse_str(
+        "
+        enum Fren
+            Cat,
+            Doggo,
+            Human(int),
+            Laptop{a: int},
+        end
+    ",
+    );
+    println!("{:#?}", parser.errors);
+
+    println!("{:#?}", ast);
+    assert!(parser.errors.is_empty());
+    assert_eq!(ast.len(), 1);
+}
+
+#[test]
+fn test_type_alias() {
+    let (ast, parser) = parse_str(
+        "
+        type howmanybananas = int
+    ",
+    );
+    println!("{:#?}", parser.errors);
+
+    println!("{:#?}", ast);
+    assert!(parser.errors.is_empty());
+    assert_eq!(ast.len(), 1);
 }

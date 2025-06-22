@@ -55,6 +55,7 @@ impl TypeEnv<'_> {
             TypedASTNode::Struct((strukt, span)) => {
                 TypedASTNode::Struct((self.resolve_struct(strukt), span))
             }
+            TypedASTNode::Enum(_) => todo!(),
             TypedASTNode::Error => TypedASTNode::Error,
         }
     }

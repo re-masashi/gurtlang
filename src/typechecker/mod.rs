@@ -15,7 +15,7 @@ use std::fs;
 use std::ops::Range;
 use std::sync::Arc;
 
-use crate::ast::{Type, TypeAnnot};
+use crate::ast::{EnumVariantKind, Type, TypeAnnot};
 use crate::tvar;
 
 type Error<'a> = (ReportKind<'a>, Report<'a, (String, Range<usize>)>);
@@ -28,9 +28,18 @@ pub struct StructTy {
 }
 
 #[derive(Debug)]
+pub struct EnumTy {
+    pub name: String,
+    pub generics: Vec<String>,
+    pub variants: HashMap<String, (EnumVariantKind, Arc<Type>)>,
+}
+
+#[derive(Debug)]
 pub struct TypeEnv<'a> {
     pub variables: HashMap<String, Arc<Type>>,
     pub structs: HashMap<String, Arc<StructTy>>,
+    pub enums: HashMap<String, Arc<EnumTy>>,
+    pub type_aliases: HashMap<String, (Vec<String>, Arc<Type>)>,
     pub tvar_count: usize,
     substitutions: HashMap<usize, Arc<Type>>,
     errors: Vec<Error<'a>>,
@@ -42,6 +51,8 @@ impl TypeEnv<'_> {
         TypeEnv {
             variables: HashMap::new(),
             structs: HashMap::new(),
+            enums: HashMap::new(),
+            type_aliases: HashMap::new(),
             errors: vec![],
             substitutions: HashMap::new(),
             tvar_count: 0,

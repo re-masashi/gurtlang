@@ -267,33 +267,45 @@ impl TypeEnv<'_> {
     }
 
     pub fn resolve(&self, ty: Arc<Type>) -> Arc<Type> {
-        match &*ty {
-            Type::Variable(i) => self
-                .substitutions
-                .get(i)
-                .map(|t| self.resolve(t.clone()))
-                .unwrap_or(ty),
-            Type::Union(types) => {
-                // Resolve all types in the union
-                let resolved: Vec<Arc<Type>> =
-                    types.iter().map(|t| self.resolve(t.clone())).collect();
-
-                // Remove duplicates
-                let mut unique = Vec::new();
-                for t in resolved {
-                    if !unique.contains(&t) {
-                        unique.push(t);
-                    }
-                }
-
-                // Simplify single-type unions
-                if unique.len() == 1 {
-                    unique[0].clone()
-                } else {
-                    Arc::new(Type::Union(unique))
-                }
+        let resolved = match &*ty {
+            Type::Variable(i) => {
+                return self.substitutions
+                    .get(i)
+                    .map(|t| self.resolve(t.clone()))
+                    .unwrap_or(ty);
             }
-            _ => ty,
+            Type::Constructor { name, generics, traits } => {
+                let resolved_generics = generics.iter().map(|t| self.resolve(t.clone())).collect();
+                Arc::new(Type::Constructor {
+                    name: name.clone(),
+                    generics: resolved_generics,
+                    traits: traits.clone(),
+                })
+            }
+            Type::Function { params, return_type } => {
+                let resolved_params = params.iter().map(|t| self.resolve(t.clone())).collect();
+                let resolved_return = self.resolve(return_type.clone());
+                Arc::new(Type::Function {
+                    params: resolved_params,
+                    return_type: resolved_return,
+                })
+            }
+            Type::Tuple(types) => {
+                let resolved_types = types.iter().map(|t| self.resolve(t.clone())).collect();
+                Arc::new(Type::Tuple(resolved_types))
+            }
+            Type::Union(types) => {
+                let resolved_types = types.iter().map(|t| self.resolve(t.clone())).collect();
+                Arc::new(Type::Union(resolved_types))
+            }
+            _ => ty.clone(),
+        };
+        
+        // If we resolved to a variable, resolve again
+        if let Type::Variable(_) = *resolved {
+            self.resolve(resolved)
+        } else {
+            resolved
         }
     }
 }

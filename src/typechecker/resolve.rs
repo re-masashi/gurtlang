@@ -1,5 +1,7 @@
 #![allow(unused_imports)]
 
+use crate::typechecker::EnumVariantTy;
+use crate::typechecker::EnumVariantKindTy;
 use crate::typechecker::EnumVariantKind;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -44,27 +46,36 @@ impl TypeEnv<'_> {
         let mut resolved_enums = HashMap::new();
         for (name, enum_ty) in &self.enums {
             let mut resolved_variants = HashMap::new();
-
-            for (variant_name, (kind, ty)) in &enum_ty.variants {
-                let resolved_ty = self.resolve(ty.clone());
-
+            
+            for (variant_name, variant_ty) in &enum_ty.variants {
+                let resolved_ty = self.resolve(variant_ty.ty.clone());
+                
                 // Resolve variant field types
-                let resolved_kind = match kind {
-                    EnumVariantKind::Unit => EnumVariantKind::Unit,
-                    EnumVariantKind::Tuple(fields) => {
-                        EnumVariantKind::Tuple(fields.iter().map(|t| t.clone()).collect())
-                    }
-                    EnumVariantKind::Struct(fields) => EnumVariantKind::Struct(
-                        fields
-                            .iter()
-                            .map(|(n, t, r)| (n.clone(), t.clone(), r.clone()))
-                            .collect(),
-                    ),
+                let resolved_kind = match &variant_ty.kind {
+                    EnumVariantKindTy::Unit => EnumVariantKindTy::Unit,
+                    EnumVariantKindTy::Tuple(fields) => {
+                        EnumVariantKindTy::Tuple(
+                            fields.iter().map(|t| self.resolve(t.clone())).collect()
+                        )
+                    },
+                    EnumVariantKindTy::Struct(fields) => {
+                        EnumVariantKindTy::Struct(
+                            fields.iter()
+                                .map(|(n, t)| (n.clone(), self.resolve(t.clone())))
+                                .collect()
+                        )
+                    },
                 };
-
-                resolved_variants.insert(variant_name.clone(), (resolved_kind, resolved_ty));
+                
+                resolved_variants.insert(
+                    variant_name.clone(),
+                    EnumVariantTy {
+                        kind: resolved_kind,
+                        ty: resolved_ty,
+                    },
+                );
             }
-
+            
             resolved_enums.insert(
                 name.clone(),
                 Arc::new(EnumTy {
@@ -75,6 +86,7 @@ impl TypeEnv<'_> {
             );
         }
         self.enums = resolved_enums;
+
 
         // Resolve AST nodes
         ast.into_iter()
@@ -100,15 +112,14 @@ impl TypeEnv<'_> {
 
     fn resolve_enum(&mut self, enum_: TypedEnum) -> TypedEnum {
         // Resolve generic parameters
-        let generics = enum_.generics; // Just names and spans, no types to resolve
-
+        let generics = enum_.generics;
+        
         // Resolve each variant
-        let variants = enum_
-            .variants
+        let variants = enum_.variants
             .into_iter()
             .map(|variant| self.resolve_enum_variant(variant))
             .collect();
-
+        
         TypedEnum {
             name: enum_.name,
             generics,
@@ -120,7 +131,10 @@ impl TypeEnv<'_> {
         let kind = match variant.kind {
             TypedEnumVariantKind::Unit => TypedEnumVariantKind::Unit,
             TypedEnumVariantKind::Tuple(fields) => {
-                let resolved_fields = fields.into_iter().map(|ty| self.resolve(ty)).collect();
+                let resolved_fields = fields
+                    .into_iter()
+                    .map(|ty| self.resolve(ty))
+                    .collect();
                 TypedEnumVariantKind::Tuple(resolved_fields)
             }
             TypedEnumVariantKind::Struct(fields) => {
@@ -131,7 +145,7 @@ impl TypeEnv<'_> {
                 TypedEnumVariantKind::Struct(resolved_fields)
             }
         };
-
+        
         TypedEnumVariant {
             name: variant.name,
             kind,

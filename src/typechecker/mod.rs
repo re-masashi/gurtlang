@@ -32,7 +32,21 @@ pub struct StructTy {
 pub struct EnumTy {
     pub name: String,
     pub generics: Vec<String>,
-    pub variants: HashMap<String, (EnumVariantKind, Arc<Type>)>,
+    pub variants: HashMap<String, EnumVariantTy>,
+}
+
+#[derive(Debug)]
+pub struct EnumVariantTy {
+    pub kind: EnumVariantKindTy,
+    pub ty: Arc<Type>,
+}
+
+
+#[derive(Debug)]
+pub enum EnumVariantKindTy {
+    Unit,
+    Tuple(Vec<Arc<Type>>),
+    Struct(Vec<(String, Arc<Type>)>),
 }
 
 #[derive(Debug)]

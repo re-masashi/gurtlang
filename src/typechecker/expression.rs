@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use crate::typechecker::EnumVariantKindTy;
 use crate::ast::Pattern;
 use crate::ast::TypedMatchArm;
 use crate::ast::TypedPattern;
@@ -12,7 +13,7 @@ use crate::ast::{
     ASTNode, AssignOp, BinOp, Expr, Function, Struct, Type, TypeAnnot, TypedASTNode, TypedExpr,
     TypedExprKind, TypedFunction, TypedStruct, UnOp,
 };
-use crate::typechecker::{TypeEnv, type_annot_to_type};
+use crate::typechecker::{TypeEnv, type_annot_to_type, type_string};
 use crate::{t_bool, t_float, t_int, t_list, t_string, t_unit, tvar};
 
 impl TypeEnv<'_> {
@@ -186,16 +187,163 @@ impl TypeEnv<'_> {
                             return_type.clone(),
                         )
                     }
-                    _ => todo!(),
+                    _ => panic!("NOT A FUNCTION"),
                 }
             }
             Expr::StructAccess {
-                struct_val: _,
-                field_name: _,
+                struct_val,
+                field_name,
             } => {
-                todo!()
+                let (struct_expr, struct_span) = &**struct_val;
+                let typed_struct = self.expr_to_typed_expr((struct_expr, struct_span));
+
+                // Resolve the struct type
+                let resolved_ty = self.resolve(typed_struct.ty.clone());
+
+                // Extract struct name and generics
+                let (struct_name, _generics) = match &*resolved_ty {
+                    Type::Constructor { name, generics, .. } => (name, generics),
+                    _ => {
+                        // Report error: not a struct type
+                        // self.add_error(
+                        //     ReportKind::Error,
+                        panic!(
+                            "Expected a struct type, found {}",
+                            type_string(&resolved_ty)
+                        );
+                        //     *span,
+                        // );
+                        // return TypedExpr {
+                        //     kind: TypedExprKind::Error,
+                        //     ty: t_unit!(),
+                        //     range: span.clone(),
+                        // };
+                    }
+                };
+
+                // Look up struct definition
+                if let Some(struct_ty) = self.get_struct(struct_name) {
+                    // Find the field in struct definition
+                    if let Some((_, field_ty)) =
+                        struct_ty.fields.iter().find(|(name, _)| name == field_name)
+                    {
+                        return TypedExpr {
+                            kind: TypedExprKind::StructAccess {
+                                struct_val: Box::new(typed_struct),
+                                field_name: field_name.clone(),
+                            },
+                            ty: field_ty.clone(),
+                            range: span.clone(),
+                        };
+                    } else {
+                        // Report error: field not found
+                        // self.add_error(
+                        //     ReportKind::Error,
+                        panic!("Struct '{}' has no field '{}'", struct_name, field_name);
+                        //     *span,
+                        // );
+                    }
+                } else {
+                    // Report error: struct not found
+                    // self.add_error(
+                    //     ReportKind::Error,
+                    panic!("Struct '{}' not found", struct_name);
+                    //     *span,
+                    // );
+                }
+
+                // (TypedExprKind::Error, t_unit!())
             }
-            Expr::MethodCall { .. } => todo!(), // needs structs implemented
+
+            // Expr::MethodCall {
+            //     struct_val,
+            //     method_name,
+            //     args,
+            // } => {
+            //     let (struct_expr, struct_span) = &**struct_val;
+            //     let typed_struct = self.expr_to_typed_expr((struct_expr, struct_span));
+
+            //     // Resolve the struct type
+            //     let resolved_ty = self.resolve(typed_struct.ty.clone());
+
+            //     // Extract struct name
+            //     let struct_name = match &*resolved_ty {
+            //         Type::Constructor { name, .. } => name,
+            //         _ => {
+            //             // Report error: not a struct type
+            //             // self.add_error(
+            //             //     ReportKind::Error,
+            //                 panic!("Expected a struct type, found {}", type_string(&resolved_ty));
+            //             //     *span,
+            //             // );
+            //             // return TypedExpr {
+            //             //     kind: TypedExprKind::Error,
+            //             //     ty: t_unit!(),
+            //             //     range: span.clone(),
+            //             // };
+            //         }
+            //     };
+
+            //     // Construct full method name: StructName.method_name
+            //     let full_method_name = format!("{}.{}", struct_name, method_name);
+
+            //     // Look up method in environment
+            //     if let Some(method_ty) = self.get_var(&full_method_name) {
+            //         let resolved_method_ty = self.resolve(method_ty.clone());
+
+            //         if let Type::Function { params, return_type } = &*resolved_method_ty {
+            //             // Check if the first parameter is the struct type
+            //             if let Some(first_param) = params.first() {
+            //                 let _ = self.unify(
+            //                     first_param.clone(),
+            //                     resolved_ty,
+            //                     struct_span,
+            //                     struct_span,
+            //                 );
+            //             }
+
+            //             // Type check arguments
+            //             let mut typed_args = vec![];
+            //             for (i, arg) in args.iter().enumerate() {
+            //                 let (arg_expr, arg_span) = arg;
+            //                 let typed_arg = self.expr_to_typed_expr((arg_expr, arg_span));
+
+            //                 // Check against method parameter type
+            //                 if let Some(param_ty) = params.get(i + 1) { // Skip first param (self)
+            //                     let _ = self.unify(
+            //                         param_ty.clone(),
+            //                         typed_arg.ty.clone(),
+            //                         arg_span,
+            //                         arg_span,
+            //                     );
+            //                 }
+
+            //                 typed_args.push(typed_arg);
+            //             }
+
+            //             return TypedExpr {
+            //                 kind: TypedExprKind::MethodCall {
+            //                     struct_val: Box::new(typed_struct),
+            //                     method_name: method_name.clone(),
+            //                     args: typed_args,
+            //                 },
+            //                 ty: return_type.clone(),
+            //                 range: span.clone(),
+            //             };
+            //         }
+            //     }
+
+            //     // Report error: method not found
+            //     // self.errors.push(
+            //     //     ReportKind::Error,
+            //         panic!("Method '{}' not found for struct '{}'", method_name, struct_name);
+            //     //     *span,
+            //     // );
+            //     panic!("Method '{}' not found for struct '{}'", method_name, struct_name);
+
+            //     // (TypedExprKind::Error, t_unit!())
+            // }
+            Expr::MethodCall { .. } => todo!(),
             Expr::BinOp {
                 operator,
                 l_value,
@@ -436,11 +584,18 @@ impl TypeEnv<'_> {
                     None => (typed_val.ty.clone(), val_span),
                 };
 
+                self.unify(
+                    var_ty.clone(),
+                    typed_val.ty.clone(),
+                    var_span,
+                    val_span,
+                );
+
                 let ty = typed_val.ty.clone();
 
                 self.insert_var(var.clone(), var_ty.clone());
 
-                let _ = self.unify(var_ty, ty.clone(), val_span, var_span);
+                // let _ = self.unify(var_ty, typed_val.clone(), val_span, var_span);
 
                 (
                     TypedExprKind::Let {
@@ -521,31 +676,42 @@ impl TypeEnv<'_> {
                 range: _,
             } => {
                 let enum_ty = self.enums.get(enum_name).expect("Enum not found").clone();
-                let (variant_kind, variant_ty) = enum_ty
+                let variant_ty_info = enum_ty
                     .variants
                     .get(variant_name)
                     .expect("Variant not found");
+                
+                let variant_kind = &variant_ty_info.kind;
+                let variant_ty = &variant_ty_info.ty;
 
                 let mut typed_fields = vec![];
+                // let mut field_types: Vec<i32> = vec![];
 
                 match variant_kind {
-                    EnumVariantKind::Unit => {
+                    EnumVariantKindTy::Unit => {
                         if !fields.is_empty() {
+                            panic!("Variant {} expects 0 fields, got {}", variant_name, fields.len());
                             // Report error: expected 0 fields
                         }
                     }
-                    EnumVariantKind::Tuple(field_types) => {
+                    EnumVariantKindTy::Tuple(field_types) => {
                         for (i, (field_name_opt, (field_expr, field_span))) in
                             fields.iter().enumerate()
                         {
                             if field_name_opt.is_some() {
-                                // Report error: tuple variant should not have field names
+                                panic!(
+                                    "Variant {} expects {} fields, got {}",
+                                    variant_name,
+                                    field_types.len(),
+                                    fields.len()
+                                )
                             }
                             if let Some(field_type) = field_types.get(i) {
                                 let typed_expr = self.expr_to_typed_expr((field_expr, field_span));
                                 self.unify(
                                     typed_expr.ty.clone(),
-                                    type_annot_to_type(&field_type.clone().0),
+                                    field_type.clone(),
+                                    // type_annot_to_type(&field_type.clone()),
                                     field_span,
                                     field_span,
                                 );
@@ -553,10 +719,10 @@ impl TypeEnv<'_> {
                             }
                         }
                     }
-                    EnumVariantKind::Struct(field_specs) => {
+                    EnumVariantKindTy::Struct(field_specs) => {
                         let field_map: HashMap<_, _> = field_specs
                             .iter()
-                            .map(|(name, ty, _)| (name.clone(), ty.clone()))
+                            .map(|(name, ty)| (name.clone(), ty.clone()))
                             .collect();
 
                         for (field_name_opt, (field_expr, field_span)) in fields {
@@ -565,13 +731,14 @@ impl TypeEnv<'_> {
                                 let typed_expr = self.expr_to_typed_expr((field_expr, field_span));
                                 self.unify(
                                     typed_expr.ty.clone(),
-                                    type_annot_to_type(&field_type.clone()),
+                                    field_type.clone(),
                                     field_span,
                                     field_span,
                                 );
                                 typed_fields.push((Some(field_name.clone()), typed_expr));
                             } else {
                                 // Report error: unknown field
+                                panic!("UNKNOWN FIELD");
                             }
                         }
                     }
@@ -654,10 +821,12 @@ impl TypeEnv<'_> {
             } => {
                 let enum_name = enum_name.as_ref().expect("Enum name missing");
                 let enum_ty = self.enums.get(enum_name).expect("Enum not found").clone();
-                let (variant_kind, variant_type) = enum_ty
-                    .variants
+                let variant_ty_info = enum_ty.variants
                     .get(variant_name)
                     .expect("Variant not found");
+                
+                let variant_kind = &variant_ty_info.kind;
+                let variant_type = &variant_ty_info.ty;
 
                 self.unify(
                     match_ty.clone(),
@@ -667,24 +836,24 @@ impl TypeEnv<'_> {
                 );
 
                 let typed_subpatterns = match variant_kind {
-                    EnumVariantKind::Unit => {
+                    EnumVariantKindTy::Unit => {
                         if !subpatterns.is_empty() {
                             // Report error: unexpected subpatterns
                         }
                         vec![]
                     }
-                    EnumVariantKind::Tuple(field_types) => subpatterns
+                    EnumVariantKindTy::Tuple(field_types) => subpatterns
                         .iter()
                         .zip(field_types)
                         .map(|((subpat, span), field_type)| {
-                            self.check_pattern(subpat, &type_annot_to_type(&field_type.0), span)
+                            self.check_pattern(subpat, field_type, span)
                         })
                         .collect(),
-                    EnumVariantKind::Struct(field_specs) => subpatterns
+                    EnumVariantKindTy::Struct(field_specs) => subpatterns
                         .iter()
                         .zip(field_specs)
-                        .map(|((subpat, span), (_, field_type, _))| {
-                            self.check_pattern(subpat, &type_annot_to_type(field_type), span)
+                        .map(|((subpat, span), (_, field_type))| {
+                            self.check_pattern(subpat, field_type, span)
                         })
                         .collect(),
                 };

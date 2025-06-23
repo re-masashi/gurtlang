@@ -3,7 +3,7 @@ use super::*;
 use crate::ast::TypedEnum;
 use crate::ast::TypedEnumVariant;
 use crate::ast::TypedEnumVariantKind;
-use crate::ast::{Enum, EnumVariant, EnumVariantKind as AstEnumVariantKind};
+use crate::ast::{Enum, EnumVariant};
 use crate::typechecker::struct_::convert_type_annot;
 
 impl TypeEnv<'_> {
@@ -18,13 +18,15 @@ impl TypeEnv<'_> {
             variants,
         } = enum_;
 
+        // Create mapping for generic parameters
         let mut generic_map = HashMap::new();
         for (generic, _) in generics {
             let tv = self.new_typevar();
             generic_map.insert(generic.clone(), tv);
         }
 
-        let mut typed_variants = vec![];
+        // Convert each variant
+        let mut typed_variants = Vec::new();
         let mut enum_ty_variants = HashMap::new();
 
         for variant in variants {
@@ -34,19 +36,21 @@ impl TypeEnv<'_> {
                 range: variant_span,
             } = variant;
 
-            let (typed_kind, type_checker_kind) = match variant_kind {
-                AstEnumVariantKind::Unit => (TypedEnumVariantKind::Unit, EnumVariantKind::Unit),
-                AstEnumVariantKind::Tuple(fields) => {
+            let (typed_kind, variant_ty_kind) = match variant_kind {
+                EnumVariantKind::Unit => {
+                    (TypedEnumVariantKind::Unit, EnumVariantKindTy::Unit)
+                }
+                EnumVariantKind::Tuple(fields) => {
                     let field_types: Vec<_> = fields
                         .iter()
                         .map(|(ty, _)| convert_type_annot(ty, &generic_map))
                         .collect();
                     (
                         TypedEnumVariantKind::Tuple(field_types.clone()),
-                        EnumVariantKind::Tuple(fields.to_vec()),
+                        EnumVariantKindTy::Tuple(field_types),
                     )
                 }
-                AstEnumVariantKind::Struct(fields) => {
+                EnumVariantKind::Struct(fields) => {
                     let field_types: Vec<_> = fields
                         .iter()
                         .map(|(field_name, ty, _)| {
@@ -55,7 +59,7 @@ impl TypeEnv<'_> {
                         .collect();
                     (
                         TypedEnumVariantKind::Struct(field_types.clone()),
-                        EnumVariantKind::Struct(fields.to_vec()),
+                        EnumVariantKindTy::Struct(field_types),
                     )
                 }
             };
@@ -68,7 +72,10 @@ impl TypeEnv<'_> {
 
             enum_ty_variants.insert(
                 variant_name.0.clone(),
-                (type_checker_kind, enum_type.clone()),
+                EnumVariantTy {
+                    kind: variant_ty_kind,
+                    ty: enum_type.clone(),
+                },
             );
             typed_variants.push(TypedEnumVariant {
                 name: variant_name.0.clone(),

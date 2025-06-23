@@ -40,7 +40,55 @@ impl Parser<'_> {
             Token::String(s) => (Expr::String(s), span_expression.clone()),
             Token::Bool(b) => (Expr::Bool(b), span_expression.clone()),
 
-            Token::Variable(i) => (Expr::Variable(i), span_expression.clone()),
+            Token::Variable(i) => {
+                if let Some((Ok(Token::Access), _)) = self.tokens.peek() {
+                    let Some((_, span)) = self.tokens.next() else {
+                        unreachable!()
+                    };
+                    let Some((Ok(Token::Variable(variant)), _span)) = self.tokens.next() else {
+                        panic!("invalid syntax. expected an identifier after '::'");
+                    };
+                    // Check if it's an enum variant pattern
+                    if let Some((Ok(Token::LParen), _)) = self.tokens.peek() {
+                        self.tokens.next(); // Consume '('
+                        let mut subpatterns = vec![];
+                        while let Some((token, _)) = self.tokens.peek() {
+                            if let Token::RParen = token.as_ref().unwrap() {
+                                self.tokens.next(); // Consume ')'
+                                break;
+                            }
+
+                            subpatterns.push(self.parse_pattern());
+
+                            if let Some((Ok(Token::Comma), _)) = self.tokens.peek() {
+                                self.tokens.next();
+                            }
+                        }
+                        (
+                            Expr::EnumVariant {
+                                enum_name: i,
+                                variant_name: variant,
+                                // subpatterns,
+                                fields: vec![],
+                                range: span.clone(),
+                            },
+                            span,
+                        )
+                    } else {
+                        (
+                            Expr::EnumVariant {
+                                enum_name: i,
+                                variant_name: variant,
+                                fields: vec![],
+                                range: span.clone(),
+                            },
+                            span,
+                        )
+                    }
+                } else {
+                    (Expr::Variable(i), span_expression.clone())
+                }
+            }
 
             Token::LParen => {
                 let expr = self.parse_expression();

@@ -671,7 +671,11 @@ impl TypeEnv<'_> {
                 fields,
                 range: _,
             } => {
-                let enum_ty = self.enums.get(enum_name).expect("Enum not found").clone();
+                let enum_ty = self
+                    .enums
+                    .get(enum_name)
+                    .unwrap_or_else(|| panic!("Enum {enum_name} not found"))
+                    .clone();
                 let variant_ty_info = enum_ty
                     .variants
                     .get(variant_name)
@@ -766,6 +770,15 @@ impl TypeEnv<'_> {
                 for arm in arms {
                     let old_vars = self.variables.clone();
                     let typed_pattern = self.check_pattern(&arm.pattern, &match_ty, &arm.range);
+                    match typed_pattern {
+                        TypedPattern::Variable(_, ref ty) => {
+                            self.unify(ty.clone(), match_ty.clone(), match_span, match_span)
+                        }
+                        TypedPattern::Literal(ref exp) => {
+                            self.unify(exp.ty.clone(), match_ty.clone(), match_span, match_span)
+                        }
+                        _ => false,
+                    };
 
                     let (body_expr, body_span) = &*arm.body;
                     let typed_body = self.expr_to_typed_expr((body_expr, body_span));
@@ -857,7 +870,7 @@ impl TypeEnv<'_> {
                 };
                 let enum_ty = enum_ty.clone();
 
-                let Some(variant_ty_info) = enum_ty.variants.get(variant_name).clone() else {
+                let Some(variant_ty_info) = enum_ty.variants.get(variant_name) else {
                     // self.add_error(
                     // ReportKind::Error,
                     panic!(
@@ -961,7 +974,7 @@ impl TypeEnv<'_> {
                 if !self.unify(
                     typed_expr.ty.clone(),
                     concrete_expected.clone(),
-                    &pattern_span,
+                    pattern_span,
                     pattern_span,
                 ) {
                     // self.add_error(
@@ -977,7 +990,26 @@ impl TypeEnv<'_> {
 
                 TypedPattern::Literal(typed_expr)
             }
-            Pattern::Union(_) | Pattern::Tuple(_) | Pattern::Error => todo!(),
+            Pattern::Union(subpatterns) => {
+                // Process each subpattern independently
+                let mut typed_subpatterns = Vec::new();
+
+                for (subpattern, span) in subpatterns {
+                    let typed_subpattern = self.check_pattern(subpattern, match_ty, span);
+                    typed_subpatterns.push(typed_subpattern);
+                }
+
+                TypedPattern::Union(typed_subpatterns)
+            }
+            Pattern::Tuple(_) | Pattern::Error => todo!(),
         }
+    }
+}
+
+pub fn typed_pattern_to_type(pat: TypedPattern) -> Arc<Type> {
+    match pat {
+        TypedPattern::Variable(_, ty) => ty.clone(),
+        TypedPattern::Literal(exp) => exp.ty.clone(),
+        _ => todo!(),
     }
 }

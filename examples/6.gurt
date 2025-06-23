@@ -1,0 +1,11 @@
+enum Option<T>
+	Some(T)
+	None
+end
+
+let x: Option<i32> Option::Some(1);
+
+match x 
+	Some::Option(a)=>1,
+	None::Option=>2
+end

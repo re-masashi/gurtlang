@@ -1,5 +1,7 @@
 #![allow(unused_imports)]
 
+use crate::ast::TypedMatchArm;
+use crate::ast::TypedPattern;
 use crate::typechecker::EnumVariantKind;
 use crate::typechecker::EnumVariantKindTy;
 use crate::typechecker::EnumVariantTy;
@@ -181,6 +183,18 @@ impl TypeEnv<'_> {
                     value: Box::new(resolved_value),
                 }
             }
+            TypedExprKind::Match { expr, arms } => {
+                let resolved_expr = self.resolve_expr(*expr);
+                let resolved_arms = arms
+                    .into_iter()
+                    .map(|arm| self.resolve_match_arm(arm))
+                    .collect();
+
+                TypedExprKind::Match {
+                    expr: Box::new(resolved_expr),
+                    arms: resolved_arms,
+                }
+            }
             // Add cases for other expression types as needed...
             _ => expr.kind,
         };
@@ -189,6 +203,45 @@ impl TypeEnv<'_> {
             kind,
             ty: resolved_ty,
             range: expr.range,
+        }
+    }
+
+    fn resolve_match_arm(&mut self, arm: TypedMatchArm) -> TypedMatchArm {
+        TypedMatchArm {
+            pattern: self.resolve_pattern(arm.pattern),
+            body: Box::new(self.resolve_expr(*arm.body)),
+        }
+    }
+
+    fn resolve_pattern(&mut self, pattern: TypedPattern) -> TypedPattern {
+        match pattern {
+            TypedPattern::Variable(name, ty) => TypedPattern::Variable(name, self.resolve(ty)),
+            TypedPattern::EnumVariant {
+                enum_name,
+                variant_name,
+                subpatterns,
+            } => TypedPattern::EnumVariant {
+                enum_name,
+                variant_name,
+                subpatterns: subpatterns
+                    .into_iter()
+                    .map(|p| self.resolve_pattern(p))
+                    .collect(),
+            },
+            TypedPattern::Union(subpatterns) => TypedPattern::Union(
+                subpatterns
+                    .into_iter()
+                    .map(|p| self.resolve_pattern(p))
+                    .collect(),
+            ),
+            TypedPattern::Tuple(subpatterns) => TypedPattern::Tuple(
+                subpatterns
+                    .into_iter()
+                    .map(|p| self.resolve_pattern(p))
+                    .collect(),
+            ),
+            TypedPattern::Literal(expr) => TypedPattern::Literal(self.resolve_expr(expr)),
+            _ => pattern,
         }
     }
 

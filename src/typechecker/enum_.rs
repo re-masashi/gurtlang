@@ -88,6 +88,8 @@ impl TypeEnv<'_> {
             variants: enum_ty_variants,
         });
 
+        println!("insertng enum {:?}", name);
+
         self.enums.insert(name.0.clone(), enum_ty);
 
         let typed_enum = TypedEnum {

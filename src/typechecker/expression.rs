@@ -6,6 +6,7 @@ use crate::ast::TypedPattern;
 use crate::typechecker::EnumVariantKind;
 use crate::typechecker::EnumVariantKindTy;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -778,6 +779,33 @@ impl TypeEnv<'_> {
                     self.variables = old_vars;
                 }
 
+                // if let Type::Constructor { name,  .. } = &*match_ty {
+                //     if let Some(enum_ty) = self.enums.get(name) {
+                //         let covered_variants: HashSet<_> = arms.iter().filter_map(|arm| {
+                //             if let Pattern::EnumVariant { variant_name, .. } = &arm.pattern {
+                //                 Some(variant_name.to_string())
+                //             } else {
+                //                 None
+                //             }
+                //         }).collect();
+
+                //         let all_variants: HashSet<_> = enum_ty.variants.keys().collect();
+
+                //         if covered_variants.len() < all_variants.len() {
+                //             let missing: Vec<_> = all_variants.difference(&covered_variants).collect();
+                //             // self.add_error(
+                //                 // ReportKind::Error,
+                //                 panic!(
+                //                     "Match is not exhaustive. Missing variant{}:",
+                //                     if missing.len() > 1 { "s" } else { "" },
+                //                     // missing.join(", ")
+                //                 );
+                //                 // *span,
+                //             // );
+                //         }
+                //     }
+                // }
+
                 let return_ty = if let Some(first_ty) = arm_tys.first() {
                     for ty in arm_tys.iter().skip(1) {
                         self.unify(first_ty.clone(), ty.clone(), &arms[0].range, &arms[1].range);
@@ -819,43 +847,100 @@ impl TypeEnv<'_> {
                 subpatterns,
             } => {
                 let enum_name = enum_name.as_ref().expect("Enum name missing");
-                let enum_ty = self.enums.get(enum_name).expect("Enum not found").clone();
-                let variant_ty_info = enum_ty
-                    .variants
-                    .get(variant_name)
-                    .expect("Variant not found");
+                let Some(enum_ty) = self.enums.get(enum_name) else {
+                    // self.add_error(
+                    // ReportKind::Error,
+                    panic!("Enum '{}' not found", enum_name);
+                    // *pattern_span,
+                    // );
+                    // return TypedPattern::Error;
+                };
+                let enum_ty = enum_ty.clone();
 
-                let variant_kind = &variant_ty_info.kind;
-                let variant_type = &variant_ty_info.ty;
+                let Some(variant_ty_info) = enum_ty.variants.get(variant_name).clone() else {
+                    // self.add_error(
+                    // ReportKind::Error,
+                    panic!(
+                        "Variant '{}' not found in enum '{}'",
+                        variant_name, enum_name
+                    );
+                    // *pattern_span,
+                    // );
+                    // return TypedPattern::Error;
+                };
 
-                self.unify(
+                // Unify the expected type with the variant type
+                if !self.unify(
                     match_ty.clone(),
-                    variant_type.clone(),
+                    variant_ty_info.ty.clone(),
                     pattern_span,
                     pattern_span,
-                );
+                ) {
+                    // self.add_error(
+                    //     ReportKind::Error,
+                    panic!(
+                        "Pattern type {} does not match expected type {}",
+                        type_string(&variant_ty_info.ty),
+                        type_string(match_ty)
+                    );
+                    //     *pattern_span,
+                    // );
+                }
 
-                let typed_subpatterns = match variant_kind {
+                // Check subpatterns
+                let typed_subpatterns = match &variant_ty_info.kind.clone() {
                     EnumVariantKindTy::Unit => {
                         if !subpatterns.is_empty() {
-                            // Report error: unexpected subpatterns
+                            // self.add_error(
+                            // ReportKind::Error,
+                            panic!(
+                                "Variant {} expects 0 fields, got {}",
+                                variant_name,
+                                subpatterns.len()
+                            );
+                            // *pattern_span,
+                            // );
                         }
                         vec![]
                     }
-                    EnumVariantKindTy::Tuple(field_types) => subpatterns
-                        .iter()
-                        .zip(field_types)
-                        .map(|((subpat, span), field_type)| {
-                            self.check_pattern(subpat, field_type, span)
-                        })
-                        .collect(),
-                    EnumVariantKindTy::Struct(field_specs) => subpatterns
-                        .iter()
-                        .zip(field_specs)
-                        .map(|((subpat, span), (_, field_type))| {
-                            self.check_pattern(subpat, field_type, span)
-                        })
-                        .collect(),
+                    EnumVariantKindTy::Tuple(field_types) => {
+                        if subpatterns.len() != field_types.len() {
+                            // self.add_error(
+                            // ReportKind::Error,
+                            panic!(
+                                "Variant {} expects {} fields, got {}",
+                                variant_name,
+                                field_types.len(),
+                                subpatterns.len()
+                            )
+                            // *pattern_span,
+                            // );
+                        }
+
+                        subpatterns
+                            .iter()
+                            .zip(field_types)
+                            .map(|((subpat, span), field_type)| {
+                                self.check_pattern(subpat, field_type, span)
+                            })
+                            .collect()
+                    }
+                    EnumVariantKindTy::Struct(field_specs) => {
+                        let _field_map: HashMap<_, _> = field_specs
+                            .iter()
+                            .map(|(name, ty)| (name.clone(), ty.clone()))
+                            .collect();
+
+                        // subpatterns
+                        //     .iter()
+                        //     .zip(field_specs)
+                        //     .map(|((subpat, span), field_type)| {
+                        //         self.check_pattern(subpat, field_type, span)
+                        //     })
+                        //     .collect()
+                        // subpatterns
+                        vec![]
+                    }
                 };
 
                 TypedPattern::EnumVariant {
@@ -866,14 +951,30 @@ impl TypeEnv<'_> {
             }
             Pattern::Wildcard => TypedPattern::Wildcard,
             Pattern::Literal(expr) => {
-                // let (expr) = expr;
+                // let (expr, span) = expr;
                 let typed_expr = self.expr_to_typed_expr((expr, pattern_span));
-                self.unify(
+
+                // Create a concrete expected type by resolving
+                let concrete_expected = self.resolve(match_ty.clone());
+
+                // Unify literal type with expected type
+                if !self.unify(
                     typed_expr.ty.clone(),
-                    match_ty.clone(),
+                    concrete_expected.clone(),
+                    &pattern_span,
                     pattern_span,
-                    pattern_span,
-                );
+                ) {
+                    // self.add_error(
+                    //     ReportKind::Error,
+                    panic!(
+                        "Literal type {} does not match expected type {}",
+                        type_string(&typed_expr.ty),
+                        type_string(&concrete_expected)
+                    )
+                    //     *pattern_span,
+                    // );
+                }
+
                 TypedPattern::Literal(typed_expr)
             }
             Pattern::Union(_) | Pattern::Tuple(_) | Pattern::Error => todo!(),

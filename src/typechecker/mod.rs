@@ -35,13 +35,13 @@ pub struct EnumTy {
     pub variants: HashMap<String, EnumVariantTy>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EnumVariantTy {
     pub kind: EnumVariantKindTy,
     pub ty: Arc<Type>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum EnumVariantKindTy {
     Unit,
     Tuple(Vec<Arc<Type>>),

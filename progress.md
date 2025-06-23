@@ -20,3 +20,6 @@ Added function and type annotation parsing.
 Day 6
 Added type annotation parsing and struct parsing
 Added struct generics
+
+Day n
+IDK BUT YAY

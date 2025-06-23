@@ -1,8 +1,11 @@
 use super::*;
+
 use crate::ast::ASTNode;
 use crate::ast::Enum;
 use crate::ast::EnumVariant;
 use crate::ast::Function;
+use crate::ast::MatchArm;
+use crate::ast::Pattern;
 use crate::ast::Struct;
 use crate::ast::TypedASTNode;
 use crate::ast::{BinOp, Expr, Type, TypedExpr, TypedExprKind};
@@ -492,4 +495,288 @@ fn test_enum_definition_and_usage() {
     } else {
         panic!("Expected expression");
     }
+}
+
+#[test]
+fn test_enum_pattern_matching() {
+    let program = vec![
+        // Define an Option enum
+        (
+            ASTNode::Enum(
+                Enum {
+                    name: ("Option".to_string(), 0..6),
+                    generics: vec![("T".to_string(), 7..8)],
+                    variants: vec![
+                        EnumVariant {
+                            name: ("Some".to_string(), 10..14),
+                            kind: EnumVariantKind::Tuple(vec![(
+                                TypeAnnot::Boring("T".to_string()),
+                                15..16,
+                            )]),
+                            range: 10..16,
+                        },
+                        EnumVariant {
+                            name: ("None".to_string(), 18..22),
+                            kind: EnumVariantKind::Unit,
+                            range: 18..22,
+                        },
+                    ],
+                },
+                0..23,
+            ),
+            0..23,
+        ),
+        // Create an Option value
+        (
+            ASTNode::Expr((
+                Expr::Let {
+                    var: "x".to_string(),
+                    type_annot: None,
+                    value: Box::new((
+                        Expr::EnumVariant {
+                            enum_name: "Option".to_string(),
+                            variant_name: "Some".to_string(),
+                            fields: vec![(None, (Expr::Int(42), 30..32))],
+                            range: 25..33,
+                        },
+                        25..33,
+                    )),
+                },
+                24..34,
+            )),
+            24..34,
+        ),
+        // Pattern match on the Option
+        (
+            ASTNode::Expr((
+                Expr::Match {
+                    expr: Box::new((Expr::Variable("x".to_string()), 40..41)),
+                    arms: vec![
+                        MatchArm {
+                            pattern: Pattern::EnumVariant {
+                                enum_name: Some("Option".to_string()),
+                                variant_name: "Some".to_string(),
+                                subpatterns: vec![(Pattern::Variable("value".to_string()), 55..60)],
+                            },
+                            body: Box::new((Expr::Variable("value".to_string()), 70..75)),
+                            range: 50..75,
+                        },
+                        MatchArm {
+                            pattern: Pattern::EnumVariant {
+                                enum_name: Some("Option".to_string()),
+                                variant_name: "None".to_string(),
+                                subpatterns: vec![],
+                            },
+                            body: Box::new((Expr::Int(0), 85..86)),
+                            range: 80..86,
+                        },
+                    ],
+                    range: 37..87,
+                },
+                37..87,
+            )),
+            37..87,
+        ),
+    ];
+
+    let mut type_env = TypeEnv::new("test".to_string());
+    let typed_ast = type_env.ast_to_typed_ast(program);
+
+    // Resolve types
+    let resolved_ast = type_env.resolve_all(typed_ast);
+
+    // Monomorphize
+    let mono_ast = type_env.monomorphize_ast(resolved_ast);
+
+    assert!(type_env.errors.is_empty());
+
+    // Check that the match expression has type int
+    if let TypedASTNode::Expr((TypedExpr { kind: _, ty, .. }, _)) = &mono_ast[2] {
+        let resolved_ty = type_env.resolve(ty.clone());
+        assert_eq!(
+            *resolved_ty,
+            *t_int!(),
+            "Match expression should return int"
+        );
+    } else {
+        panic!("Expected match expression");
+    }
+}
+
+#[test]
+fn test_enum_pattern_matching_error() {
+    let program = vec![
+        // Define an Option enum
+        (
+            ASTNode::Enum(
+                Enum {
+                    name: ("Option".to_string(), 0..6),
+                    generics: vec![("T".to_string(), 7..8)],
+                    variants: vec![
+                        EnumVariant {
+                            name: ("Some".to_string(), 10..14),
+                            kind: EnumVariantKind::Tuple(vec![(
+                                TypeAnnot::Boring("T".to_string()),
+                                15..16,
+                            )]),
+                            range: 10..16,
+                        },
+                        EnumVariant {
+                            name: ("None".to_string(), 18..22),
+                            kind: EnumVariantKind::Unit,
+                            range: 18..22,
+                        },
+                    ],
+                },
+                0..23,
+            ),
+            0..23,
+        ),
+        // Create an Option value
+        (
+            ASTNode::Expr((
+                Expr::Let {
+                    var: "x".to_string(),
+                    type_annot: None,
+                    value: Box::new((
+                        Expr::EnumVariant {
+                            enum_name: "Option".to_string(),
+                            variant_name: "Some".to_string(),
+                            fields: vec![(None, (Expr::Int(42), 30..32))],
+                            range: 25..33,
+                        },
+                        25..33,
+                    )),
+                },
+                24..34,
+            )),
+            24..34,
+        ),
+        // Incorrect pattern match (wrong arm types)
+        (
+            ASTNode::Expr((
+                Expr::Match {
+                    expr: Box::new((Expr::Variable("x".to_string()), 40..41)),
+                    arms: vec![
+                        MatchArm {
+                            pattern: Pattern::EnumVariant {
+                                enum_name: Some("Option".to_string()),
+                                variant_name: "Some".to_string(),
+                                subpatterns: vec![(Pattern::Variable("value".to_string()), 55..60)],
+                            },
+                            body: Box::new((Expr::Variable("value".to_string()), 70..75)),
+                            range: 50..75,
+                        },
+                        MatchArm {
+                            pattern: Pattern::EnumVariant {
+                                enum_name: Some("Option".to_string()),
+                                variant_name: "None".to_string(),
+                                subpatterns: vec![],
+                            },
+                            body: Box::new((Expr::String("nothing".to_string()), 85..93)),
+                            range: 80..93,
+                        },
+                    ],
+                    range: 37..94,
+                },
+                37..94,
+            )),
+            37..94,
+        ),
+    ];
+
+    let mut type_env = TypeEnv::new("test".to_string());
+    let typed_ast = type_env.ast_to_typed_ast(program);
+
+    // Resolve types
+    let resolved_ast = type_env.resolve_all(typed_ast);
+    let _ = type_env.monomorphize_ast(resolved_ast);
+
+    // Should have error: match arms have different types (int vs string)
+    assert!(!type_env.errors.is_empty());
+
+    // ill do it later
+}
+
+#[test]
+#[should_panic]
+fn test_enum_pattern_matching_wrong_field_type() {
+    let program = vec![
+        // Define an Option enum
+        (
+            ASTNode::Enum(
+                Enum {
+                    name: ("Option".to_string(), 0..6),
+                    generics: vec![("T".to_string(), 7..8)],
+                    variants: vec![
+                        EnumVariant {
+                            name: ("Some".to_string(), 10..14),
+                            kind: EnumVariantKind::Tuple(vec![(
+                                TypeAnnot::Boring("T".to_string()),
+                                15..16,
+                            )]),
+                            range: 10..16,
+                        },
+                        EnumVariant {
+                            name: ("None".to_string(), 18..22),
+                            kind: EnumVariantKind::Unit,
+                            range: 18..22,
+                        },
+                    ],
+                },
+                0..23,
+            ),
+            0..23,
+        ),
+        // Pattern match with wrong field type
+        (
+            ASTNode::Expr((
+                Expr::Match {
+                    expr: Box::new((Expr::Variable("opt".to_string()), 30..33)),
+                    arms: vec![
+                        MatchArm {
+                            pattern: Pattern::EnumVariant {
+                                enum_name: Some("Option".to_string()),
+                                variant_name: "Some".to_string(),
+                                subpatterns: vec![(
+                                    Pattern::Literal(Expr::String("text".to_string())),
+                                    45..51,
+                                )],
+                            },
+                            body: Box::new((Expr::Int(1), 60..61)),
+                            range: 40..61,
+                        },
+                        MatchArm {
+                            pattern: Pattern::EnumVariant {
+                                enum_name: Some("Option".to_string()),
+                                variant_name: "None".to_string(),
+                                subpatterns: vec![],
+                            },
+                            body: Box::new((Expr::Int(0), 70..71)),
+                            range: 65..71,
+                        },
+                    ],
+                    range: 27..72,
+                },
+                27..72,
+            )),
+            27..72,
+        ),
+    ];
+
+    let mut type_env = TypeEnv::new("test".to_string());
+    // Add variable with Option<int> type
+    type_env.insert_var(
+        "opt".to_string(),
+        Arc::new(Type::Constructor {
+            name: "Option".to_string(),
+            generics: vec![t_int!()],
+            traits: vec![],
+        }),
+    );
+
+    let _ = type_env.ast_to_typed_ast(program);
+
+    // Should have error: string pattern doesn't match int type
+    assert!(!type_env.errors.is_empty());
 }

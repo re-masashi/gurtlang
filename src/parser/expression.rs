@@ -1125,8 +1125,8 @@ impl Parser<'_> {
                         }
                         (
                             Pattern::EnumVariant {
-                                enum_name: Some(variant),
-                                variant_name: name,
+                                enum_name: Some(name),
+                                variant_name: variant,
                                 subpatterns,
                             },
                             span.start..span.end,
@@ -1134,8 +1134,8 @@ impl Parser<'_> {
                     } else {
                         (
                             Pattern::EnumVariant {
-                                enum_name: Some(variant),
-                                variant_name: name,
+                                enum_name: Some(name),
+                                variant_name: variant,
                                 subpatterns: vec![],
                             },
                             span.start..span.end,

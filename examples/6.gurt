@@ -6,6 +6,6 @@ end
 let x: Option<i32> Option::Some(1);
 
 match x 
-	Some::Option(a)=>1,
-	None::Option=>2
+	Option::Some(a)=>1,
+	Option::None=>2,
 end

@@ -81,7 +81,7 @@ impl TypeEnv<'_> {
     }
 }
 
-fn convert_type_annot(
+pub fn convert_type_annot(
     // &self,
     type_annot: &TypeAnnot,
     generic_map: &HashMap<String, Arc<Type>>,

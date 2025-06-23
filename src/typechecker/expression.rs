@@ -1,5 +1,10 @@
 #![allow(unused_imports)]
 
+use crate::ast::Pattern;
+use crate::ast::TypedMatchArm;
+use crate::ast::TypedPattern;
+use crate::typechecker::EnumVariantKind;
+use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -34,7 +39,11 @@ impl TypeEnv<'_> {
                 let (typed_struct, span) = self.struct_to_typed_struct((&struct_, &dummy_span));
                 TypedASTNode::Struct((typed_struct, span))
             }
-            ASTNode::Enum(_, _) | ASTNode::TypeAlias(_, _) => todo!(),
+            ASTNode::Enum(enum_, range) => {
+                let (typed_enum, span) = self.enum_to_typed_enum((&enum_, &range));
+                TypedASTNode::Enum((typed_enum, span))
+            }
+            ASTNode::TypeAlias(_, _) => todo!(),
         }
     }
 
@@ -71,7 +80,7 @@ impl TypeEnv<'_> {
                         TypedExprKind::Array {
                             elements: vec![new_elem],
                         },
-                        ty.clone(),
+                        t_list!(ty.clone()),
                     )
                 } else {
                     let (first_elem, first_span) = &elements[0];
@@ -106,7 +115,7 @@ impl TypeEnv<'_> {
                         TypedExprKind::Array {
                             elements: new_elems,
                         },
-                        ty.clone(),
+                        t_list!(ty.clone()),
                     )
                 }
             }
@@ -133,7 +142,7 @@ impl TypeEnv<'_> {
                     // Type::Constructor { name, .. } if name == "string" => {
                     //     (t_string!())
                     // }
-                    _ => todo!("bs. who would even index sumn that's not an array."),
+                    x => todo!("bs. who would even index sumn that's not an array. {:?}", x),
                 }
             }
             Expr::Call { function, args } => {
@@ -505,13 +514,200 @@ impl TypeEnv<'_> {
                     Arc::new(Type::Tuple(types)),
                 )
             }
-            Expr::EnumVariant { .. } | Expr::Match { .. } => todo!(),
+            Expr::EnumVariant {
+                enum_name,
+                variant_name,
+                fields,
+                range: _,
+            } => {
+                let enum_ty = self.enums.get(enum_name).expect("Enum not found").clone();
+                let (variant_kind, variant_ty) = enum_ty
+                    .variants
+                    .get(variant_name)
+                    .expect("Variant not found");
+
+                let mut typed_fields = vec![];
+
+                match variant_kind {
+                    EnumVariantKind::Unit => {
+                        if !fields.is_empty() {
+                            // Report error: expected 0 fields
+                        }
+                    }
+                    EnumVariantKind::Tuple(field_types) => {
+                        for (i, (field_name_opt, (field_expr, field_span))) in
+                            fields.iter().enumerate()
+                        {
+                            if field_name_opt.is_some() {
+                                // Report error: tuple variant should not have field names
+                            }
+                            if let Some(field_type) = field_types.get(i) {
+                                let typed_expr = self.expr_to_typed_expr((field_expr, field_span));
+                                self.unify(
+                                    typed_expr.ty.clone(),
+                                    type_annot_to_type(&field_type.clone().0),
+                                    field_span,
+                                    field_span,
+                                );
+                                typed_fields.push((None, typed_expr));
+                            }
+                        }
+                    }
+                    EnumVariantKind::Struct(field_specs) => {
+                        let field_map: HashMap<_, _> = field_specs
+                            .iter()
+                            .map(|(name, ty, _)| (name.clone(), ty.clone()))
+                            .collect();
+
+                        for (field_name_opt, (field_expr, field_span)) in fields {
+                            let field_name = field_name_opt.as_ref().expect("Field name missing");
+                            if let Some(field_type) = field_map.get(field_name) {
+                                let typed_expr = self.expr_to_typed_expr((field_expr, field_span));
+                                self.unify(
+                                    typed_expr.ty.clone(),
+                                    type_annot_to_type(&field_type.clone()),
+                                    field_span,
+                                    field_span,
+                                );
+                                typed_fields.push((Some(field_name.clone()), typed_expr));
+                            } else {
+                                // Report error: unknown field
+                            }
+                        }
+                    }
+                }
+
+                let kind = TypedExprKind::EnumVariant {
+                    enum_name: enum_name.clone(),
+                    variant_name: variant_name.clone(),
+                    fields: typed_fields,
+                };
+                (kind, variant_ty.clone())
+            }
+            Expr::Match {
+                expr: match_expr,
+                arms,
+                range: _,
+            } => {
+                let (match_expr_inner, match_span) = &**match_expr;
+                let typed_match_expr = self.expr_to_typed_expr((match_expr_inner, match_span));
+                let match_ty = typed_match_expr.ty.clone();
+
+                let mut typed_arms = vec![];
+                let mut arm_tys = vec![];
+
+                for arm in arms {
+                    let old_vars = self.variables.clone();
+                    let typed_pattern = self.check_pattern(&arm.pattern, &match_ty, &arm.range);
+
+                    let (body_expr, body_span) = &*arm.body;
+                    let typed_body = self.expr_to_typed_expr((body_expr, body_span));
+
+                    typed_arms.push(TypedMatchArm {
+                        pattern: typed_pattern,
+                        body: Box::new(typed_body.clone()),
+                    });
+                    arm_tys.push(typed_body.ty.clone());
+
+                    self.variables = old_vars;
+                }
+
+                let return_ty = if let Some(first_ty) = arm_tys.first() {
+                    for ty in arm_tys.iter().skip(1) {
+                        self.unify(first_ty.clone(), ty.clone(), &arms[0].range, &arms[1].range);
+                    }
+                    first_ty.clone()
+                } else {
+                    t_unit!()
+                };
+
+                let kind = TypedExprKind::Match {
+                    expr: Box::new(typed_match_expr),
+                    arms: typed_arms,
+                };
+                (kind, return_ty)
+            }
             Expr::Error => unreachable!(),
         };
         TypedExpr {
             kind: exprkind,
             ty,
             range: span.clone(),
+        }
+    }
+
+    fn check_pattern(
+        &mut self,
+        pattern: &Pattern,
+        match_ty: &Arc<Type>,
+        pattern_span: &Range<usize>,
+    ) -> TypedPattern {
+        match pattern {
+            Pattern::Variable(name) => {
+                self.insert_var(name.clone(), match_ty.clone());
+                TypedPattern::Variable(name.clone(), match_ty.clone())
+            }
+            Pattern::EnumVariant {
+                enum_name,
+                variant_name,
+                subpatterns,
+            } => {
+                let enum_name = enum_name.as_ref().expect("Enum name missing");
+                let enum_ty = self.enums.get(enum_name).expect("Enum not found").clone();
+                let (variant_kind, variant_type) = enum_ty
+                    .variants
+                    .get(variant_name)
+                    .expect("Variant not found");
+
+                self.unify(
+                    match_ty.clone(),
+                    variant_type.clone(),
+                    pattern_span,
+                    pattern_span,
+                );
+
+                let typed_subpatterns = match variant_kind {
+                    EnumVariantKind::Unit => {
+                        if !subpatterns.is_empty() {
+                            // Report error: unexpected subpatterns
+                        }
+                        vec![]
+                    }
+                    EnumVariantKind::Tuple(field_types) => subpatterns
+                        .iter()
+                        .zip(field_types)
+                        .map(|((subpat, span), field_type)| {
+                            self.check_pattern(subpat, &type_annot_to_type(&field_type.0), span)
+                        })
+                        .collect(),
+                    EnumVariantKind::Struct(field_specs) => subpatterns
+                        .iter()
+                        .zip(field_specs)
+                        .map(|((subpat, span), (_, field_type, _))| {
+                            self.check_pattern(subpat, &type_annot_to_type(field_type), span)
+                        })
+                        .collect(),
+                };
+
+                TypedPattern::EnumVariant {
+                    enum_name: enum_name.clone(),
+                    variant_name: variant_name.clone(),
+                    subpatterns: typed_subpatterns,
+                }
+            }
+            Pattern::Wildcard => TypedPattern::Wildcard,
+            Pattern::Literal(expr) => {
+                // let (expr) = expr;
+                let typed_expr = self.expr_to_typed_expr((expr, pattern_span));
+                self.unify(
+                    typed_expr.ty.clone(),
+                    match_ty.clone(),
+                    pattern_span,
+                    pattern_span,
+                );
+                TypedPattern::Literal(typed_expr)
+            }
+            Pattern::Union(_) | Pattern::Tuple(_) | Pattern::Error => todo!(),
         }
     }
 }

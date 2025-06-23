@@ -1,5 +1,6 @@
 TODO:
-- [ ] Finish typechecker
-- [ ] Add tests
+- [ ] Finish the typechecker
+- [x] Add tests
 - [ ] Add proper errors in some places where I felt lazy
-- [ ] Add span info along with expressions
+- [x] Add span info along with expressions
+- [ ] Nephele = do Mia = end Velvet = pprint

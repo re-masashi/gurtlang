@@ -50,7 +50,7 @@ fn main() {
     let resolved_ast = type_env.resolve_all(typed_ast);
     let mono_ast = type_env.monomorphize_ast(resolved_ast);
 
-    println!("{:#?}", mono_ast);
+    // println!("{:#?}", mono_ast);
 
     println!("Me: Yogurt");
     println!("Gurt: Yo");

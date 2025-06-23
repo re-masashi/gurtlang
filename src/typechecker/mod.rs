@@ -41,7 +41,6 @@ pub struct EnumVariantTy {
     pub ty: Arc<Type>,
 }
 
-
 #[derive(Debug)]
 pub enum EnumVariantKindTy {
     Unit,

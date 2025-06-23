@@ -1,10 +1,10 @@
 #![allow(unused_imports)]
 
-use crate::typechecker::EnumVariantKindTy;
 use crate::ast::Pattern;
 use crate::ast::TypedMatchArm;
 use crate::ast::TypedPattern;
 use crate::typechecker::EnumVariantKind;
+use crate::typechecker::EnumVariantKindTy;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
@@ -584,12 +584,7 @@ impl TypeEnv<'_> {
                     None => (typed_val.ty.clone(), val_span),
                 };
 
-                self.unify(
-                    var_ty.clone(),
-                    typed_val.ty.clone(),
-                    var_span,
-                    val_span,
-                );
+                self.unify(var_ty.clone(), typed_val.ty.clone(), var_span, val_span);
 
                 let ty = typed_val.ty.clone();
 
@@ -680,7 +675,7 @@ impl TypeEnv<'_> {
                     .variants
                     .get(variant_name)
                     .expect("Variant not found");
-                
+
                 let variant_kind = &variant_ty_info.kind;
                 let variant_ty = &variant_ty_info.ty;
 
@@ -690,7 +685,11 @@ impl TypeEnv<'_> {
                 match variant_kind {
                     EnumVariantKindTy::Unit => {
                         if !fields.is_empty() {
-                            panic!("Variant {} expects 0 fields, got {}", variant_name, fields.len());
+                            panic!(
+                                "Variant {} expects 0 fields, got {}",
+                                variant_name,
+                                fields.len()
+                            );
                             // Report error: expected 0 fields
                         }
                     }
@@ -821,10 +820,11 @@ impl TypeEnv<'_> {
             } => {
                 let enum_name = enum_name.as_ref().expect("Enum name missing");
                 let enum_ty = self.enums.get(enum_name).expect("Enum not found").clone();
-                let variant_ty_info = enum_ty.variants
+                let variant_ty_info = enum_ty
+                    .variants
                     .get(variant_name)
                     .expect("Variant not found");
-                
+
                 let variant_kind = &variant_ty_info.kind;
                 let variant_type = &variant_ty_info.ty;
 

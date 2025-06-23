@@ -37,9 +37,7 @@ impl TypeEnv<'_> {
             } = variant;
 
             let (typed_kind, variant_ty_kind) = match variant_kind {
-                EnumVariantKind::Unit => {
-                    (TypedEnumVariantKind::Unit, EnumVariantKindTy::Unit)
-                }
+                EnumVariantKind::Unit => (TypedEnumVariantKind::Unit, EnumVariantKindTy::Unit),
                 EnumVariantKind::Tuple(fields) => {
                     let field_types: Vec<_> = fields
                         .iter()

@@ -468,7 +468,7 @@ fn test_enum_definition_and_usage() {
 
     let resolved_ast = type_env.resolve_all(typed_ast);
     println!("resolved_ast {:?}", resolved_ast);
-    
+
     let mono_ast = type_env.monomorphize_ast(resolved_ast);
     println!("mono_ast {:?}", mono_ast);
 

@@ -149,7 +149,7 @@ impl TypeEnv<'_> {
         }
     }
 
-    fn resolve_expr(&mut self, expr: TypedExpr) -> TypedExpr {
+    pub fn resolve_expr(&mut self, expr: TypedExpr) -> TypedExpr {
         // Resolve the type first
         let resolved_ty = self.resolve(expr.ty.clone());
 

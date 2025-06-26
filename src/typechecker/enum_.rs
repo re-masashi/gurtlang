@@ -20,9 +20,12 @@ impl TypeEnv<'_> {
 
         // Create mapping for generic parameters
         let mut generic_map = HashMap::new();
-        for (generic, _) in generics {
+        let mut generic_tys = Vec::new(); // Maintain order of generic parameters
+
+        for (generic_name, _) in generics {
             let tv = self.new_typevar();
-            generic_map.insert(generic.clone(), tv);
+            generic_map.insert(generic_name.clone(), tv.clone());
+            generic_tys.push(tv);
         }
 
         // Convert each variant
@@ -64,7 +67,7 @@ impl TypeEnv<'_> {
 
             let enum_type = Arc::new(Type::Constructor {
                 name: name.0.clone(),
-                generics: generic_map.values().cloned().collect(),
+                generics: generic_tys.clone(), // Use ordered list
                 traits: vec![],
             });
 

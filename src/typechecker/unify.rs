@@ -31,13 +31,13 @@ impl TypeEnv<'_> {
         let t1 = self.resolve(t1);
         let t2 = self.resolve(t2);
 
-        match (&*t1, &*t2) {
+        let fl = match (&*t1, &*t2) {
             // Same types
             _ if t1 == t2 => true,
 
             // Variable unification
-            (Type::Variable(i), _) => self.bind(*i, t2, span1),
-            (_, Type::Variable(i)) => self.bind(*i, t1, span2),
+            (Type::Variable(i), _) => self.bind(*i, t2.clone(), span1),
+            (_, Type::Variable(i)) => self.bind(*i, t1.clone(), span2),
 
             // Union type unification
             (Type::Union(u1), Type::Union(u2)) => self.unify_unions(u1, u2, span1, span2),
@@ -149,10 +149,19 @@ impl TypeEnv<'_> {
 
             // Mismatched types
             _ => false,
+        };
+
+        if !fl {
+            panic!(
+                "unification error {}, {}",
+                type_string(&t1),
+                type_string(&t2)
+            )
         }
+        fl
     }
 
-    fn bind(&mut self, var: usize, ty: Arc<Type>, span: &Range<usize>) -> bool {
+    pub fn bind(&mut self, var: usize, ty: Arc<Type>, span: &Range<usize>) -> bool {
         if let Type::Variable(i) = *ty {
             if i == var {
                 return true; // Same variable

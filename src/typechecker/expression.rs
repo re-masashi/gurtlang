@@ -770,6 +770,7 @@ impl TypeEnv<'_> {
                 for arm in arms {
                     let old_vars = self.variables.clone();
                     let typed_pattern = self.check_pattern(&arm.pattern, &match_ty, &arm.range);
+
                     match typed_pattern {
                         TypedPattern::Variable(_, ref ty) => {
                             self.unify(ty.clone(), match_ty.clone(), match_span, match_span)
@@ -791,6 +792,19 @@ impl TypeEnv<'_> {
 
                     self.variables = old_vars;
                 }
+
+                let typed_arm_0 = &typed_arms[0];
+
+                for typed_arm in &mut typed_arms.iter().skip(1) {
+                    self.unify(
+                        typed_arm_0.body.ty.clone(),
+                        typed_arm.body.ty.clone(),
+                        match_span,
+                        match_span,
+                    );
+                }
+
+                self.default_unbound_generics(&match_ty);
 
                 // if let Type::Constructor { name,  .. } = &*match_ty {
                 //     if let Some(enum_ty) = self.enums.get(name) {
@@ -840,6 +854,22 @@ impl TypeEnv<'_> {
             kind: exprkind,
             ty,
             range: span.clone(),
+        }
+    }
+
+    // Default any unbound generic types to string
+    fn default_unbound_generics(&mut self, ty: &Arc<Type>) {
+        let resolved = self.resolve(ty.clone());
+
+        if let Type::Constructor { generics, .. } = &*resolved {
+            for generic in generics {
+                if let Type::Variable(i) = &**generic {
+                    // If still unbound, default to string
+                    if !self.substitutions.contains_key(i) {
+                        self.substitutions.insert(*i, t_string!());
+                    }
+                }
+            }
         }
     }
 

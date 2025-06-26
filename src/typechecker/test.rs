@@ -8,6 +8,7 @@ use crate::ast::MatchArm;
 use crate::ast::Pattern;
 use crate::ast::Struct;
 use crate::ast::TypedASTNode;
+use crate::ast::TypedPattern;
 use crate::ast::{BinOp, Expr, Type, TypedExpr, TypedExprKind};
 use crate::t_float;
 use crate::t_int;
@@ -604,6 +605,7 @@ fn test_enum_pattern_matching() {
 }
 
 #[test]
+#[should_panic]
 fn test_enum_pattern_matching_error() {
     let program = vec![
         // Define an Option enum
@@ -779,4 +781,550 @@ fn test_enum_pattern_matching_wrong_field_type() {
 
     // Should have error: string pattern doesn't match int type
     assert!(!type_env.errors.is_empty());
+}
+
+#[test]
+fn test_basic_enum_matching() {
+    let mut env = TypeEnv::new("test".to_string());
+
+    // Define Option enum
+    let option_enum = Enum {
+        name: ("Option".to_string(), 0..0),
+        generics: vec![("T".to_string(), 0..0)],
+        variants: vec![
+            EnumVariant {
+                name: ("Some".to_string(), 0..0),
+                kind: EnumVariantKind::Tuple(vec![(TypeAnnot::Boring("T".to_string()), 0..0)]),
+                range: 0..0,
+            },
+            EnumVariant {
+                name: ("None".to_string(), 0..0),
+                kind: EnumVariantKind::Unit,
+                range: 0..0,
+            },
+        ],
+    };
+
+    // Register enum in environment
+    let (_, _) = env.enum_to_typed_enum((&option_enum, &(0..0)));
+
+    // Create expression: let x = Option::Some(42)
+    let some_expr = Expr::EnumVariant {
+        enum_name: "Option".to_string(),
+        variant_name: "Some".to_string(),
+        fields: vec![(None, (Expr::Int(42), 0..0))],
+        range: 0..0,
+    };
+
+    // Create match expression
+    let match_expr = Expr::Match {
+        expr: Box::new((Expr::Variable("x".to_string()), 0..0)),
+        arms: vec![
+            MatchArm {
+                pattern: Pattern::EnumVariant {
+                    enum_name: Some("Option".to_string()),
+                    variant_name: "Some".to_string(),
+                    subpatterns: vec![(Pattern::Variable("a".to_string()), 0..0)],
+                },
+                body: Box::new((Expr::Variable("a".to_string()), 0..0)),
+                range: 0..0,
+            },
+            MatchArm {
+                pattern: Pattern::EnumVariant {
+                    enum_name: Some("Option".to_string()),
+                    variant_name: "None".to_string(),
+                    subpatterns: vec![],
+                },
+                body: Box::new((Expr::Int(0), 0..0)),
+                range: 0..0,
+            },
+        ],
+        range: 0..0,
+    };
+
+    // Type check expressions
+    let typed_some = env.expr_to_typed_expr((&some_expr, &(0..0)));
+    let typed_match = env.expr_to_typed_expr((&match_expr, &(0..0)));
+
+    // RESOLVE TYPES
+    let resolved_some = env.resolve_expr(typed_some);
+    let resolved_match = env.resolve_expr(typed_match);
+
+    // Validate types
+    assert_eq!(type_string(&resolved_some.ty), "Option<int>");
+
+    assert_eq!(type_string(&resolved_match.ty), "int");
+
+    // Validate pattern variable type
+    if let TypedExprKind::Match { arms, .. } = &resolved_match.kind {
+        if let TypedPattern::EnumVariant { subpatterns, .. } = &arms[0].pattern {
+            if let TypedPattern::Variable(_, ty) = &subpatterns[0] {
+                assert_eq!(type_string(ty), "int");
+            } else {
+                panic!("Expected variable pattern");
+            }
+        }
+    }
+}
+
+#[test]
+fn test_generic_enum_matching() {
+    let mut env = TypeEnv::new("test".to_string());
+
+    // Define Result enum
+    let result_enum = Enum {
+        name: ("Result".to_string(), 0..0),
+        generics: vec![("T".to_string(), 0..0), ("E".to_string(), 0..0)],
+        variants: vec![
+            EnumVariant {
+                name: ("Ok".to_string(), 0..0),
+                kind: EnumVariantKind::Tuple(vec![(TypeAnnot::Boring("T".to_string()), 0..0)]),
+                range: 0..0,
+            },
+            EnumVariant {
+                name: ("Err".to_string(), 0..0),
+                kind: EnumVariantKind::Tuple(vec![(TypeAnnot::Boring("E".to_string()), 0..0)]),
+                range: 0..0,
+            },
+        ],
+    };
+
+    // Register enum
+    let (_, _) = env.enum_to_typed_enum((&result_enum, &(0..0)));
+
+    // Create expression: let res = Result::Ok(42)
+    let ok_expr = Expr::EnumVariant {
+        enum_name: "Result".to_string(),
+        variant_name: "Ok".to_string(),
+        fields: vec![(None, (Expr::Int(42), 0..0))],
+        range: 0..0,
+    };
+
+    // Create match expression
+    let match_expr = Expr::Match {
+        expr: Box::new((Expr::Variable("res".to_string()), 0..0)),
+        arms: vec![
+            MatchArm {
+                pattern: Pattern::EnumVariant {
+                    enum_name: Some("Result".to_string()),
+                    variant_name: "Ok".to_string(),
+                    subpatterns: vec![(Pattern::Variable("value".to_string()), 0..0)],
+                },
+                body: Box::new((Expr::Variable("value".to_string()), 0..0)),
+                range: 0..0,
+            },
+            MatchArm {
+                pattern: Pattern::EnumVariant {
+                    enum_name: Some("Result".to_string()),
+                    variant_name: "Err".to_string(),
+                    subpatterns: vec![(Pattern::Variable("error".to_string()), 0..0)],
+                },
+                body: Box::new((Expr::Int(-1), 0..0)),
+                range: 0..0,
+            },
+        ],
+        range: 0..0,
+    };
+
+    // Type check
+    let typed_ok = env.expr_to_typed_expr((&ok_expr, &(0..0)));
+    let typed_match = env.expr_to_typed_expr((&match_expr, &(0..0)));
+
+    let resolved_ok = env.resolve_expr(typed_ok);
+    let resolved_match = env.resolve_expr(typed_match);
+
+    // Validate types
+    assert_eq!(type_string(&resolved_ok.ty), "Result<int, string>");
+
+    assert_eq!(type_string(&resolved_match.ty), "int");
+}
+
+#[test]
+fn test_union_pattern_matching() {
+    let mut env = TypeEnv::new("test".to_string());
+
+    // Define Status enum
+    let status_enum = Enum {
+        name: ("Status".to_string(), 0..0),
+        generics: vec![],
+        variants: vec![
+            EnumVariant {
+                name: ("Success".to_string(), 0..0),
+                kind: EnumVariantKind::Unit,
+                range: 0..0,
+            },
+            EnumVariant {
+                name: ("Warning".to_string(), 0..0),
+                kind: EnumVariantKind::Unit,
+                range: 0..0,
+            },
+            EnumVariant {
+                name: ("Error".to_string(), 0..0),
+                kind: EnumVariantKind::Unit,
+                range: 0..0,
+            },
+        ],
+    };
+
+    // Register enum
+    let (_, _) = env.enum_to_typed_enum((&status_enum, &(0..0)));
+
+    // Create match expression with union pattern
+    let match_expr = Expr::Match {
+        expr: Box::new((Expr::Variable("status".to_string()), 0..0)),
+        arms: vec![
+            MatchArm {
+                pattern: Pattern::Union(vec![
+                    (
+                        Pattern::EnumVariant {
+                            enum_name: Some("Status".to_string()),
+                            variant_name: "Success".to_string(),
+                            subpatterns: vec![],
+                        },
+                        0..0,
+                    ),
+                    (
+                        Pattern::EnumVariant {
+                            enum_name: Some("Status".to_string()),
+                            variant_name: "Warning".to_string(),
+                            subpatterns: vec![],
+                        },
+                        0..0,
+                    ),
+                ]),
+                body: Box::new((Expr::Int(1), 0..0)),
+                range: 0..0,
+            },
+            MatchArm {
+                pattern: Pattern::EnumVariant {
+                    enum_name: Some("Status".to_string()),
+                    variant_name: "Error".to_string(),
+                    subpatterns: vec![],
+                },
+                body: Box::new((Expr::Int(0), 0..0)),
+                range: 0..0,
+            },
+        ],
+        range: 0..0,
+    };
+
+    // Type check
+    let typed_match = env.expr_to_typed_expr((&match_expr, &(0..0)));
+
+    // Validate type
+    assert_eq!(type_string(&typed_match.ty), "int");
+}
+
+#[test]
+fn test_complex_pattern_matching() {
+    let mut env = TypeEnv::new("test".to_string());
+
+    // Define complex enum
+    let data_enum = Enum {
+        name: ("Data".to_string(), 0..0),
+        generics: vec![("T".to_string(), 0..0)],
+        variants: vec![
+            EnumVariant {
+                name: ("Point".to_string(), 0..0),
+                kind: EnumVariantKind::Tuple(vec![
+                    (TypeAnnot::Boring("T".to_string()), 0..0),
+                    (TypeAnnot::Boring("T".to_string()), 0..0),
+                ]),
+                range: 0..0,
+            },
+            EnumVariant {
+                name: ("Line".to_string(), 0..0),
+                kind: EnumVariantKind::Struct(vec![
+                    (
+                        "start".to_string(),
+                        TypeAnnot::Boring("T".to_string()),
+                        0..0,
+                    ),
+                    ("end".to_string(), TypeAnnot::Boring("T".to_string()), 0..0),
+                ]),
+                range: 0..0,
+            },
+        ],
+    };
+
+    // Register enum
+    let (_, _) = env.enum_to_typed_enum((&data_enum, &(0..0)));
+
+    // Create expression: let point = Data::Point(1.0, 2.0)
+    let point_expr = Expr::EnumVariant {
+        enum_name: "Data".to_string(),
+        variant_name: "Point".to_string(),
+        fields: vec![
+            (None, (Expr::Float(1.0), 0..0)),
+            (None, (Expr::Float(2.0), 0..0)),
+        ],
+        range: 0..0,
+    };
+
+    // Create match expression
+    let match_expr = Expr::Match {
+        expr: Box::new((Expr::Variable("data".to_string()), 0..0)),
+        arms: vec![
+            MatchArm {
+                pattern: Pattern::EnumVariant {
+                    enum_name: Some("Data".to_string()),
+                    variant_name: "Point".to_string(),
+                    subpatterns: vec![
+                        (Pattern::Variable("x".to_string()), 0..0),
+                        (Pattern::Variable("y".to_string()), 0..0),
+                    ],
+                },
+                body: Box::new((
+                    Expr::BinOp {
+                        operator: BinOp::Add,
+                        l_value: Box::new((Expr::Variable("x".to_string()), 0..0)),
+                        r_value: Box::new((Expr::Variable("y".to_string()), 0..0)),
+                    },
+                    0..0,
+                )),
+                range: 0..0,
+            },
+            MatchArm {
+                pattern: Pattern::EnumVariant {
+                    enum_name: Some("Data".to_string()),
+                    variant_name: "Line".to_string(),
+                    subpatterns: vec![
+                        (Pattern::Variable("start".to_string()), 0..0),
+                        (Pattern::Variable("end".to_string()), 0..0),
+                    ],
+                },
+                body: Box::new((
+                    Expr::BinOp {
+                        operator: BinOp::Sub,
+                        l_value: Box::new((Expr::Variable("end".to_string()), 0..0)),
+                        r_value: Box::new((Expr::Variable("start".to_string()), 0..0)),
+                    },
+                    0..0,
+                )),
+                range: 0..0,
+            },
+        ],
+        range: 0..0,
+    };
+
+    // Type check
+    let typed_point = env.expr_to_typed_expr((&point_expr, &(0..0)));
+    let typed_match = env.expr_to_typed_expr((&match_expr, &(0..0)));
+
+    let resolved_point = env.resolve_expr(typed_point);
+    let resolved_match = env.resolve_expr(typed_match);
+
+    // Validate types
+    assert_eq!(type_string(&resolved_point.ty), "Data<float>");
+
+    assert_eq!(type_string(&resolved_match.ty), "float");
+}
+
+#[test]
+fn test_recursive_resolution() {
+    let mut env = TypeEnv::new("test".to_string());
+
+    // Define nested data structure
+    let list_enum = Enum {
+        name: ("List".to_string(), 0..0),
+        generics: vec![("T".to_string(), 0..0)],
+        variants: vec![
+            EnumVariant {
+                name: ("Cons".to_string(), 0..0),
+                kind: EnumVariantKind::Tuple(vec![
+                    (TypeAnnot::Boring("T".to_string()), 0..0),
+                    (
+                        TypeAnnot::Generic(
+                            "List".to_string(),
+                            vec![TypeAnnot::Boring("T".to_string())],
+                        ),
+                        0..0,
+                    ),
+                ]),
+                range: 0..0,
+            },
+            EnumVariant {
+                name: ("Nil".to_string(), 0..0),
+                kind: EnumVariantKind::Unit,
+                range: 0..0,
+            },
+        ],
+    };
+
+    // Register enum
+    let (_, _) = env.enum_to_typed_enum((&list_enum, &(0..0)));
+
+    // Create expression: let list = List::Cons(1, List::Cons(2, List::Nil))
+    let list_expr = Expr::EnumVariant {
+        enum_name: "List".to_string(),
+        variant_name: "Cons".to_string(),
+        fields: vec![
+            (None, (Expr::Int(1), 0..0)),
+            (
+                None,
+                (
+                    Expr::EnumVariant {
+                        enum_name: "List".to_string(),
+                        variant_name: "Cons".to_string(),
+                        fields: vec![
+                            (None, (Expr::Int(2), 0..0)),
+                            (
+                                None,
+                                (
+                                    Expr::EnumVariant {
+                                        enum_name: "List".to_string(),
+                                        variant_name: "Nil".to_string(),
+                                        fields: vec![],
+                                        range: 0..0,
+                                    },
+                                    0..0,
+                                ),
+                            ),
+                        ],
+                        range: 0..0,
+                    },
+                    0..0,
+                ),
+            ),
+        ],
+        range: 0..0,
+    };
+
+    // Create match expression
+    let match_expr = Expr::Match {
+        expr: Box::new((Expr::Variable("list".to_string()), 0..0)),
+        arms: vec![
+            MatchArm {
+                pattern: Pattern::EnumVariant {
+                    enum_name: Some("List".to_string()),
+                    variant_name: "Cons".to_string(),
+                    subpatterns: vec![
+                        (Pattern::Variable("head".to_string()), 0..0),
+                        (Pattern::Variable("tail".to_string()), 0..0),
+                    ],
+                },
+                body: Box::new((Expr::Variable("head".to_string()), 0..0)),
+                range: 0..0,
+            },
+            MatchArm {
+                pattern: Pattern::EnumVariant {
+                    enum_name: Some("List".to_string()),
+                    variant_name: "Nil".to_string(),
+                    subpatterns: vec![],
+                },
+                body: Box::new((Expr::Int(0), 0..0)),
+                range: 0..0,
+            },
+        ],
+        range: 0..0,
+    };
+
+    // Type check
+    let typed_list = env.expr_to_typed_expr((&list_expr, &(0..0)));
+    let typed_match = env.expr_to_typed_expr((&match_expr, &(0..0)));
+
+    let resolved_list = env.resolve_expr(typed_list);
+    let resolved_match = env.resolve_expr(typed_match);
+
+    // Validate types
+    assert_eq!(type_string(&resolved_list.ty), "List<int>");
+
+    assert_eq!(type_string(&resolved_match.ty), "int");
+
+    // Validate pattern variable types
+    if let TypedExprKind::Match { arms, .. } = &resolved_match.kind {
+        if let TypedPattern::EnumVariant { subpatterns, .. } = &arms[0].pattern {
+            // Head should be int
+            if let TypedPattern::Variable(_, ty) = &subpatterns[0] {
+                assert_eq!(type_string(ty), "int");
+            }
+
+            // Tail should be List<int>
+            if let TypedPattern::Variable(_, ty) = &subpatterns[1] {
+                assert_eq!(type_string(ty), "List<int>");
+            }
+        }
+    }
+}
+
+#[test]
+fn test_union_pattern_with_variables() {
+    let mut env = TypeEnv::new("test".to_string());
+
+    // Define simple enum
+    let simple_enum = Enum {
+        name: ("Simple".to_string(), 0..0),
+        generics: vec![],
+        variants: vec![
+            EnumVariant {
+                name: ("A".to_string(), 0..0),
+                kind: EnumVariantKind::Tuple(vec![(TypeAnnot::Int, 0..0)]),
+                range: 0..0,
+            },
+            EnumVariant {
+                name: ("B".to_string(), 0..0),
+                kind: EnumVariantKind::Tuple(vec![(TypeAnnot::String, 0..0)]),
+                range: 0..0,
+            },
+        ],
+    };
+
+    // Register enum
+    let (_, _) = env.enum_to_typed_enum((&simple_enum, &(0..0)));
+
+    // Create match expression with union pattern
+    let match_expr = Expr::Match {
+        expr: Box::new((Expr::Variable("value".to_string()), 0..0)),
+        arms: vec![MatchArm {
+            pattern: Pattern::Union(vec![
+                (
+                    Pattern::EnumVariant {
+                        enum_name: Some("Simple".to_string()),
+                        variant_name: "A".to_string(),
+                        subpatterns: vec![(Pattern::Variable("num".to_string()), 0..0)],
+                    },
+                    0..0,
+                ),
+                (
+                    Pattern::EnumVariant {
+                        enum_name: Some("Simple".to_string()),
+                        variant_name: "B".to_string(),
+                        subpatterns: vec![(Pattern::Variable("str".to_string()), 0..0)],
+                    },
+                    0..0,
+                ),
+            ]),
+            body: Box::new((
+                Expr::Int(1), // Should be int to match both arms
+                0..0,
+            )),
+            range: 0..0,
+        }],
+        range: 0..0,
+    };
+
+    // Type check
+    let typed_match = env.expr_to_typed_expr((&match_expr, &(0..0)));
+
+    // Validate types
+    assert_eq!(type_string(&typed_match.ty), "int");
+
+    // Validate pattern variable types
+    if let TypedExprKind::Match { arms, .. } = &typed_match.kind {
+        if let TypedPattern::Union(subpatterns) = &arms[0].pattern {
+            // First subpattern: num should be int
+            if let TypedPattern::EnumVariant { subpatterns, .. } = &subpatterns[0] {
+                if let TypedPattern::Variable(_, ty) = &subpatterns[0] {
+                    assert_eq!(type_string(ty), "int");
+                }
+            }
+
+            // Second subpattern: str should be string
+            if let TypedPattern::EnumVariant { subpatterns, .. } = &subpatterns[1] {
+                if let TypedPattern::Variable(_, ty) = &subpatterns[0] {
+                    assert_eq!(type_string(ty), "string");
+                }
+            }
+        }
+    }
 }

@@ -68,7 +68,6 @@ impl Parser<'_> {
                             Expr::EnumVariant {
                                 enum_name: i,
                                 variant_name: variant,
-                                // subpatterns,
                                 fields: vec![],
                                 range: span.clone(),
                             },

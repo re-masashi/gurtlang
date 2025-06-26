@@ -23,3 +23,9 @@ Added struct generics
 
 Day n
 IDK BUT YAY
+Added tests
+
+Day 44
+Added enums
+Added match
+Added match and enum typechecking

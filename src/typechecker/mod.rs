@@ -56,6 +56,8 @@ pub struct TypeEnv<'a> {
     pub type_aliases: HashMap<String, (Vec<String>, Arc<Type>)>,
     pub tvar_count: usize,
     substitutions: HashMap<usize, Arc<Type>>,
+    in_function: bool,
+    return_depth: usize, // Track depth of return expressions
     errors: Vec<Error<'a>>,
     file: String,
 }
@@ -70,6 +72,8 @@ impl TypeEnv<'_> {
             errors: vec![],
             substitutions: HashMap::new(),
             tvar_count: 0,
+            in_function: false,
+            return_depth: 0,
             file,
         }
     }

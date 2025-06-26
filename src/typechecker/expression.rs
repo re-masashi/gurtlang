@@ -256,95 +256,8 @@ impl TypeEnv<'_> {
                 // (TypedExprKind::Error, t_unit!())
             }
 
-            // Expr::MethodCall {
-            //     struct_val,
-            //     method_name,
-            //     args,
-            // } => {
-            //     let (struct_expr, struct_span) = &**struct_val;
-            //     let typed_struct = self.expr_to_typed_expr((struct_expr, struct_span));
-
-            //     // Resolve the struct type
-            //     let resolved_ty = self.resolve(typed_struct.ty.clone());
-
-            //     // Extract struct name
-            //     let struct_name = match &*resolved_ty {
-            //         Type::Constructor { name, .. } => name,
-            //         _ => {
-            //             // Report error: not a struct type
-            //             // self.add_error(
-            //             //     ReportKind::Error,
-            //                 panic!("Expected a struct type, found {}", type_string(&resolved_ty));
-            //             //     *span,
-            //             // );
-            //             // return TypedExpr {
-            //             //     kind: TypedExprKind::Error,
-            //             //     ty: t_unit!(),
-            //             //     range: span.clone(),
-            //             // };
-            //         }
-            //     };
-
-            //     // Construct full method name: StructName.method_name
-            //     let full_method_name = format!("{}.{}", struct_name, method_name);
-
-            //     // Look up method in environment
-            //     if let Some(method_ty) = self.get_var(&full_method_name) {
-            //         let resolved_method_ty = self.resolve(method_ty.clone());
-
-            //         if let Type::Function { params, return_type } = &*resolved_method_ty {
-            //             // Check if the first parameter is the struct type
-            //             if let Some(first_param) = params.first() {
-            //                 let _ = self.unify(
-            //                     first_param.clone(),
-            //                     resolved_ty,
-            //                     struct_span,
-            //                     struct_span,
-            //                 );
-            //             }
-
-            //             // Type check arguments
-            //             let mut typed_args = vec![];
-            //             for (i, arg) in args.iter().enumerate() {
-            //                 let (arg_expr, arg_span) = arg;
-            //                 let typed_arg = self.expr_to_typed_expr((arg_expr, arg_span));
-
-            //                 // Check against method parameter type
-            //                 if let Some(param_ty) = params.get(i + 1) { // Skip first param (self)
-            //                     let _ = self.unify(
-            //                         param_ty.clone(),
-            //                         typed_arg.ty.clone(),
-            //                         arg_span,
-            //                         arg_span,
-            //                     );
-            //                 }
-
-            //                 typed_args.push(typed_arg);
-            //             }
-
-            //             return TypedExpr {
-            //                 kind: TypedExprKind::MethodCall {
-            //                     struct_val: Box::new(typed_struct),
-            //                     method_name: method_name.clone(),
-            //                     args: typed_args,
-            //                 },
-            //                 ty: return_type.clone(),
-            //                 range: span.clone(),
-            //             };
-            //         }
-            //     }
-
-            //     // Report error: method not found
-            //     // self.errors.push(
-            //     //     ReportKind::Error,
-            //         panic!("Method '{}' not found for struct '{}'", method_name, struct_name);
-            //     //     *span,
-            //     // );
-            //     panic!("Method '{}' not found for struct '{}'", method_name, struct_name);
-
-            //     // (TypedExprKind::Error, t_unit!())
-            // }
             Expr::MethodCall { .. } => todo!(),
+
             Expr::BinOp {
                 operator,
                 l_value,
@@ -570,6 +483,25 @@ impl TypeEnv<'_> {
                         expressions: typed_exprs,
                     },
                     ty,
+                )
+            }
+            Expr::Return(inner_expr) => {
+                if !self.in_function {
+                    panic!("Return statement outside function at {:?}", span);
+                }
+
+                if self.return_depth > 0 {
+                    panic!("Nested return at {:?}", span);
+                }
+                self.return_depth += 1;
+
+                let typed_inner = self.expr_to_typed_expr((inner_expr, span));
+
+                self.return_depth -= 1;
+
+                (
+                    TypedExprKind::Return(Box::new(typed_inner.clone())),
+                    typed_inner.ty,
                 )
             }
             Expr::Let {

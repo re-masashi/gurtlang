@@ -166,8 +166,8 @@ pub enum Token {
     #[token("match")]
     KeywordMatch,
 
-    #[token("case")]
-    KeywordCase, // If using case-style pattern matching
+    #[token("return")]
+    KeywordReturn,
 
     // New tokens for pattern matching
     #[token("=>")]

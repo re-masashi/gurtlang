@@ -22,6 +22,7 @@ pub enum Expr {
     String(String),
 
     Variable(String),
+    Return(Box<Expr>),
 
     Array {
         elements: Vec<(Expr, Range<usize>)>,
@@ -235,7 +236,8 @@ pub enum Type {
     },
     Tuple(Vec<Arc<Type>>),
     Union(Vec<Arc<Type>>),
-    // GenericParam(String), // JUST FOR STRUCTS AND MAYBE ENUMS LATER
+
+    Never,
     Unit,
 }
 
@@ -254,6 +256,8 @@ pub enum TypedExprKind {
     String(String),
 
     Variable(String),
+
+    Return(Box<TypedExpr>),
 
     Array {
         elements: Vec<TypedExpr>,

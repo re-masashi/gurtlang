@@ -172,6 +172,7 @@ impl Parser<'_> {
             Token::KeywordLet => return self.parse_let(span_expression),
             Token::KeywordDo => return self.parse_do(span_expression),
             Token::KeywordIf => return self.parse_if(span_expression),
+            Token::KeywordReturn => self.parse_return(span_expression.clone()),
 
             // Token::KeywordEnum => return self.parse_enum(span_expression),
             // Token::KeywordType => return self.parse_type_alias(span_expression),
@@ -1087,6 +1088,12 @@ impl Parser<'_> {
             },
             full_span,
         )
+    }
+
+    pub fn parse_return(&mut self, _span_start: Range<usize>) -> (Expr, Range<usize>) {
+        // 'return' has already been eaten
+        let (expr, range) = self.parse_expression();
+        (Expr::Return(Box::new(expr)), range)
     }
 
     // Helper functions

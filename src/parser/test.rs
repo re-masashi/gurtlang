@@ -228,6 +228,15 @@ fn test_parse_assignments() {
 }
 
 #[test]
+fn test_return() {
+    let (ast, parser) = parse_str("return return 0");
+    assert!(parser.errors.is_empty());
+    assert_eq!(ast.len(), 1);
+
+    assert!(matches!(ast[0].0, ASTNode::Expr((Expr::Return(_), _)),))
+}
+
+#[test]
 fn test_parse_do_block() {
     let (ast, parser) = parse_str("do 1+1 2; 3 end");
     // println!("{:#?}", parser.errors);

@@ -195,6 +195,10 @@ impl TypeEnv<'_> {
                     arms: resolved_arms,
                 }
             }
+            TypedExprKind::Return(inner) => {
+                let resolved_inner = self.resolve_expr(*inner);
+                TypedExprKind::Return(Box::new(resolved_inner))
+            }
             // Add cases for other expression types as needed...
             _ => expr.kind,
         };

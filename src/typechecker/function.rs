@@ -15,6 +15,10 @@ impl TypeEnv<'_> {
         &mut self,
         function: (&Function, &Range<usize>),
     ) -> (TypedFunction, Range<usize>) {
+        let was_in_function = self.in_function;
+        self.in_function = true;
+        self.return_depth = 0; // Reset depth for new function
+
         let (function, fun_span) = function;
         let Function {
             name,
@@ -38,6 +42,7 @@ impl TypeEnv<'_> {
             self.expr_to_typed_expr((body, body_span)),
             body_span.clone(),
         );
+        self.in_function = was_in_function;
 
         let typed_return_type = match return_type {
             Some((return_type, span)) => (type_annot_to_type(return_type), span.clone()),

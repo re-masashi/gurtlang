@@ -9,6 +9,7 @@ use crate::ast::Pattern;
 use crate::ast::Struct;
 use crate::ast::TypedASTNode;
 use crate::ast::TypedPattern;
+use crate::ast::UnOp;
 use crate::ast::{BinOp, Expr, Type, TypedExpr, TypedExprKind};
 use crate::t_float;
 use crate::t_int;
@@ -252,41 +253,42 @@ fn test_array_operations() {
     }
 }
 
-// #[test]
-// fn test_type_mismatch_errors() {
-//     let program = vec![
-//         (
-//             ASTNode::Expr((
-//                 Expr::Let {
-//                     var: "x".to_string(),
-//                     type_annot: Some((TypeAnnot::Int, 0..3)),
-//                     value: Box::new((Expr::Float(3.14), 6..10)),
-//                 },
-//                 0..11,
-//             )),
-//             0..11,
-//         ),
-//         (
-//             ASTNode::Expr((
-//                 Expr::BinOp {
-//                     operator: BinOp::Add,
-//                     l_value: Box::new((Expr::Int(5), 15..16)),
-//                     r_value: Box::new((Expr::Bool(true), 17..21)),
-//                 },
-//                 15..22,
-//             )),
-//             15..22,
-//         ),
-//     ];
+#[test]
+#[should_panic]
+fn test_type_mismatch_errors() {
+    let program = vec![
+        (
+            ASTNode::Expr((
+                Expr::Let {
+                    var: "x".to_string(),
+                    type_annot: Some((TypeAnnot::Int, 0..3)),
+                    value: Box::new((Expr::Float(3.14), 6..10)),
+                },
+                0..11,
+            )),
+            0..11,
+        ),
+        (
+            ASTNode::Expr((
+                Expr::BinOp {
+                    operator: BinOp::Add,
+                    l_value: Box::new((Expr::Int(5), 15..16)),
+                    r_value: Box::new((Expr::Bool(true), 17..21)),
+                },
+                15..22,
+            )),
+            15..22,
+        ),
+    ];
 
-//     let mut type_env = TypeEnv::new("test".to_string());
-//     let _ = type_env.ast_to_typed_ast(program);
+    let mut type_env = TypeEnv::new("test".to_string());
+    let _ = type_env.ast_to_typed_ast(program);
 
-//     // Should have 2 errors:
-//     // 1. Int vs Float in let binding
-//     // 2. Int vs Bool in addition
-//     assert_eq!(type_env.errors.len(), 2);
-// }
+    // Should have 2 errors:
+    // 1. Int vs Float in let binding
+    // 2. Int vs Bool in addition
+    assert_eq!(type_env.errors.len(), 2);
+}
 
 #[test]
 fn test_generic_function() {
@@ -1327,4 +1329,147 @@ fn test_union_pattern_with_variables() {
             }
         }
     }
+}
+
+#[test]
+fn test_valid_return_inside_function() {
+    let mut env = TypeEnv::new("test".to_string());
+
+    // Create function with return statement
+    let func = Function {
+        name: "test".to_string(),
+        args: vec![],
+        body: Box::new((Expr::Return(Box::new(Expr::Int(42))), 0..0)),
+        return_type: Some((TypeAnnot::Int, 0..0)),
+    };
+
+    // Type check function - should not panic
+    let (typed_func, _) = env.function_to_typed_function((&func, &(0..0)));
+
+    // Verify return type
+    assert_eq!(type_string(&typed_func.return_type.0), "int");
+
+    // Verify body expression
+    if let TypedExprKind::Return(inner) = &typed_func.body.0.kind {
+        assert_eq!(type_string(&inner.ty), "int");
+    } else {
+        panic!("Expected return expression");
+    }
+
+    // Should have no errors
+    assert!(env.errors.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "Return statement outside function")]
+fn test_return_outside_function() {
+    let mut env = TypeEnv::new("test".to_string());
+
+    // Create return expression at top level
+    let return_expr = Expr::Return(Box::new(Expr::Int(42)));
+
+    // Type check return expression - should panic
+    env.expr_to_typed_expr((&return_expr, &(0..0)));
+}
+
+#[test]
+#[should_panic]
+fn test_multiple_returns_in_function() {
+    let mut env = TypeEnv::new("test".to_string());
+
+    // Create function with multiple returns
+    let func = Function {
+        name: "abs".to_string(),
+        args: vec![("x".to_string(), Some(TypeAnnot::Int), 0..0)],
+        body: Box::new((
+            Expr::IfElse {
+                condition: Box::new((
+                    Expr::BinOp {
+                        operator: BinOp::Less,
+                        l_value: Box::new((Expr::Variable("x".to_string()), 0..0)),
+                        r_value: Box::new((Expr::Int(0), 0..0)),
+                    },
+                    0..0,
+                )),
+                if_branch: Box::new((
+                    Expr::Return(Box::new(Expr::UnOp {
+                        unop: UnOp::Minus,
+                        expression: Box::new((Expr::Variable("x".to_string()), 0..0)),
+                    })),
+                    0..0,
+                )),
+                else_branch: Some(Box::new((
+                    Expr::Return(Box::new(Expr::Variable("x".to_string()))),
+                    0..0,
+                ))),
+            },
+            0..0,
+        )),
+        return_type: Some((TypeAnnot::Int, 0..0)),
+    };
+
+    // Type check function
+    let (typed_func, _) = env.function_to_typed_function((&func, &(0..0)));
+
+    // Verify return type
+    assert_eq!(type_string(&typed_func.return_type.0), "int");
+
+    // Should have no errors
+    assert!(!env.errors.is_empty());
+}
+
+#[test]
+#[should_panic(expected = "Nested return")]
+fn test_nested_return() {
+    let mut env = TypeEnv::new("test".to_string());
+
+    // Create function with nested return (invalid)
+    let func = Function {
+        name: "invalid".to_string(),
+        args: vec![],
+        body: Box::new((
+            Expr::Return(Box::new(Expr::Return(Box::new(Expr::Int(42))))),
+            0..0,
+        )),
+        return_type: Some((TypeAnnot::Int, 0..0)),
+    };
+
+    // Type check function - should panic on nested return
+    env.function_to_typed_function((&func, &(0..0)));
+}
+
+#[test]
+fn test_valid_nested_expressions() {
+    let mut env = TypeEnv::new("test".to_string());
+
+    // Create function with return containing expression (not nested return)
+    let func = Function {
+        name: "valid".to_string(),
+        args: vec![],
+        body: Box::new((
+            Expr::Return(Box::new(Expr::BinOp {
+                operator: BinOp::Add,
+                l_value: Box::new((Expr::Int(20), 0..0)),
+                r_value: Box::new((Expr::Int(22), 0..0)),
+            })),
+            0..0,
+        )),
+        return_type: Some((TypeAnnot::Int, 0..0)),
+    };
+
+    // Type check function - should succeed
+    let (typed_func, _) = env.function_to_typed_function((&func, &(0..0)));
+
+    // Verify return type
+    assert_eq!(type_string(&typed_func.return_type.0), "int");
+
+    // Verify body expression
+    if let TypedExprKind::Return(inner) = &typed_func.body.0.kind {
+        assert_eq!(type_string(&inner.ty), "int");
+    } else {
+        panic!("Expected return expression");
+    }
+
+    // Should have no errors
+    assert!(env.errors.is_empty());
 }

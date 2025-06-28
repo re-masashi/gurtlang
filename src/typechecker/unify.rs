@@ -55,19 +55,18 @@ impl TypeEnv<'_> {
                     return_type: r2,
                 },
             ) if p1.len() == p2.len() => {
-                let mut f = true;
+                let mut success = true;
                 for (a, b) in p1.iter().zip(p2.iter()) {
                     if !self.unify(a.clone(), b.clone(), span1, span2) {
-                        f = false;
+                        success = false;
                     }
                 }
-                if f {
+                if success {
                     self.unify(r1.clone(), r2.clone(), span1, span2)
                 } else {
-                    f
+                    false
                 }
             }
-
             // Tuple types
             (Type::Tuple(t1), Type::Tuple(t2)) if t1.len() == t2.len() => {
                 let mut f = true;

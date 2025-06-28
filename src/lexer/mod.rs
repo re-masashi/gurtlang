@@ -35,15 +35,15 @@ pub enum Token {
     })]
     String(String),
 
-    #[regex(r#"r#?"([^"\\]|\\.)*"#, |lex| {
+    #[regex(r#""""([^"\\]*(\\.[^"\\]*)*)""""#, |lex| {
         let s = lex.slice();
-        s[3..s.len()-1]
+        let content = &s[3..s.len() - 3]; // Remove the triple quotes
+        content
             .replace("\\\"", "\"")
             .replace("\\\\", "\\")
-            .replace("\\\n", "\n")
-            .replace("\\\r", "\r")
-            .replace("\\\t", "\t")
-        // Removes r# and quotes and escape sequences
+            .replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\t", "\t")
     })]
     RawString(String),
 

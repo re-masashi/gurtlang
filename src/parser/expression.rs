@@ -38,6 +38,7 @@ impl Parser<'_> {
             Token::Int(i) => (Expr::Int(i), span_expression.clone()),
             Token::Float(f) => (Expr::Float(f), span_expression.clone()),
             Token::String(s) => (Expr::String(s), span_expression.clone()),
+            Token::RawString(s) => (Expr::String(s), span_expression.clone()),
             Token::Bool(b) => (Expr::Bool(b), span_expression.clone()),
 
             Token::Variable(i) => {
@@ -170,11 +171,11 @@ impl Parser<'_> {
 
             // keywords
             Token::KeywordLet => return self.parse_let(span_expression),
+            Token::KeywordFn => self.parse_lambda(span_expression.clone()),
             Token::KeywordDo => return self.parse_do(span_expression),
             Token::KeywordIf => return self.parse_if(span_expression),
             Token::KeywordReturn => self.parse_return(span_expression.clone()),
-
-            // Token::KeywordEnum => return self.parse_enum(span_expression),
+            
             // Token::KeywordType => return self.parse_type_alias(span_expression),
             Token::KeywordMatch => return self.parse_match(span_expression),
 
@@ -861,6 +862,96 @@ impl Parser<'_> {
             ));
             (Expr::Error, span)
         }
+    }
+
+    fn parse_lambda(&mut self, span: Range<usize>) -> (Expr, Range<usize>) {
+        let _start_pos = span.start;
+        // 'fn' already eaten
+        let Some((token, span_expression)) = self.tokens.next() else {
+            self.errors.push((
+                ReportKind::Error,
+                Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
+                    .with_code("EOF")
+                    .with_label(
+                        Label::new((self.file.clone(), span.clone()))
+                            .with_message("expected a valid lambda but reached end of file")
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_message("reached end of file while parsing `fn` expression")
+                    .finish(),
+            ));
+            return (Expr::Error, span);
+        };
+
+        if let Ok(Token::LParen) = token {
+
+        } else {
+            self.errors.push((
+                ReportKind::Error,
+                Report::build(ReportKind::Error, (self.file.clone(), span_expression.clone()))
+                    .with_code("SyntaxError")
+                    .with_label(
+                        Label::new((self.file.clone(), span_expression.clone()))
+                            .with_message("expected '(' after 'fn'. found unexpected token")
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_message("invalid syntax for`fn` expression")
+                    .finish(),
+            ));
+            return (Expr::Error, span);
+        }
+
+        let mut args = vec![];
+
+        loop {
+            let Some((token, span)) = self.tokens.peek() else {
+                self.errors.push((
+                    ReportKind::Error,
+                    Report::build(
+                        ReportKind::Error,
+                        (self.file.clone(), span_expression.clone()),
+                    )
+                    .with_code("EOF")
+                    .with_label(
+                        Label::new((self.file.clone(), span_expression.clone()))
+                            .with_message("unexpected EOF")
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_message("unexpected eof while parsing function")
+                    .finish(),
+                ));
+                return (Expr::Error, span_expression.clone());
+            };
+            let span = span.clone();
+            match token.as_ref().unwrap() {
+                Token::RParen => {
+                    self.tokens.next();
+                    break;
+                }
+                Token::Comma => {
+                    self.tokens.next();
+                    continue;
+                }
+                _ => {
+                    let arg = match self.parse_function_arg(span.clone()) {
+                        Ok(arg) => arg,
+                        Err(e) => {
+                            self.errors.push(*e);
+                            return (Expr::Error, span);
+                        }
+                    };
+                    args.push(arg);
+                }
+            }
+        }
+        let (body, span) = self.parse_expression();
+        (Expr::Lambda {
+            args,
+            expression: Box::new((body, span.clone()))
+        }, span)
+
+        // let mut args = Vec::new();
+        // todo!()
     }
 
     pub fn parse_do(&mut self, span: Range<usize>) -> (Expr, Range<usize>) {

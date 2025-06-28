@@ -217,16 +217,13 @@ fn type_string(ty: &Type) -> String {
                 .join(", ");
             format!("{}<{}>", name, generics)
         }
-        Type::Function {
-            params,
-            return_type,
-        } => {
-            let params = params
+        Type::Function { params, return_type } => {
+            let param_str = params
                 .iter()
                 .map(|t| type_string(t))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("({}) -> {}", params, type_string(return_type))
+            format!("fn({}) -> {}", param_str, type_string(return_type))
         }
         _ => format!("{:?}", ty),
     }

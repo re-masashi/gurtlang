@@ -23,6 +23,10 @@ pub enum Expr {
 
     Variable(String),
     Return(Box<Expr>),
+    Lambda{
+        args: Vec<(String, Option<TypeAnnot>, Range<usize>)>,
+        expression: Box<(Expr, Range<usize>)>,
+    },
 
     Array {
         elements: Vec<(Expr, Range<usize>)>,
@@ -221,7 +225,7 @@ pub enum TypeAnnot {
     Trait(String),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Type {
     Constructor {
         name: String,
@@ -258,6 +262,11 @@ pub enum TypedExprKind {
     Variable(String),
 
     Return(Box<TypedExpr>),
+
+    Lambda{
+        args: Vec<(String, Arc<Type>, Range<usize>)>,
+        expression: Box<TypedExpr>,
+    },
 
     Array {
         elements: Vec<TypedExpr>,

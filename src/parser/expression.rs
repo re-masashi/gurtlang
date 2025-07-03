@@ -1194,7 +1194,7 @@ impl Parser<'_> {
             _ => return (Pattern::Error, 0..0),
         };
 
-        match token {
+        let pat = match token {
             Token::Underscore => (Pattern::Wildcard, span),
             Token::Variable(name) => {
                 if let Some((Ok(Token::Access), _)) = self.tokens.peek() {
@@ -1269,6 +1269,24 @@ impl Parser<'_> {
                 (Pattern::Tuple(patterns), span.start..end_span.end)
             }
             _ => (Pattern::Error, span),
+        };
+        if let (Pattern::Error, _) = pat {
+            return pat;
         }
+        match self.tokens.peek() {
+            Some((Ok(Token::KeywordIf), _)) => {}
+            _ => return pat,
+        };
+
+        let Some((_, span)) = self.tokens.next() else {
+            unreachable!()
+        };
+
+        let guard = self.parse_expression();
+
+        (
+            Pattern::Guard(Box::new((pat.0, span.clone())), guard.clone()),
+            span.start..guard.1.end,
+        )
     }
 }

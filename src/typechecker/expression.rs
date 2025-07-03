@@ -938,7 +938,7 @@ impl TypeEnv<'_> {
                             .iter()
                             .zip(field_types)
                             .map(|((subpat, span), field_type)| {
-                                self.check_pattern(subpat, field_type, span)
+                                (self.check_pattern(subpat, field_type, span), span.clone())
                             })
                             .collect()
                     }
@@ -1000,12 +1000,21 @@ impl TypeEnv<'_> {
 
                 for (subpattern, span) in subpatterns {
                     let typed_subpattern = self.check_pattern(subpattern, match_ty, span);
-                    typed_subpatterns.push(typed_subpattern);
+                    typed_subpatterns.push((typed_subpattern, span.clone()));
                 }
 
                 TypedPattern::Union(typed_subpatterns)
             }
             Pattern::Tuple(_) | Pattern::Error => todo!(),
+            Pattern::Guard(pattern, expr) => {
+                let typed_pattern = self.check_pattern(&pattern.0, match_ty, &pattern.1);
+                let (expr, span) = expr;
+                let expr = self.expr_to_typed_expr((expr, span));
+                TypedPattern::Guard(
+                    Box::new((typed_pattern, pattern.1.clone())),
+                    (expr, span.clone()),
+                )
+            }
         }
     }
 }

@@ -59,8 +59,8 @@ fn test_parse_variable() {
 #[test]
 fn test_parse_array() {
     let (ast, parser) = parse_str("[1, 2, 3]");
-    println!("{:#?}", ast);
-    println!("{:#?}", parser.errors);
+    // println!("{:#?}", ast);
+    // println!("{:#?}", parser.errors);
 
     assert!(parser.errors.is_empty());
 
@@ -424,6 +424,7 @@ fn test_parse_match() {
     let (ast, parser) = parse_str(
         "
         match abcd 
+            A::Pat1(a, _) if a == 2 | _ => print(a),
             A::Pat1(a, _) | _ => print(1),
             (_, b) => println(-1),
             _=>print(0),
@@ -463,9 +464,9 @@ fn test_type_alias() {
         type howmanybananas = int
     ",
     );
-    println!("{:#?}", parser.errors);
+    // println!("{:#?}", parser.errors);
 
-    println!("{:#?}", ast);
+    // println!("{:#?}", ast);
     assert!(parser.errors.is_empty());
     assert_eq!(ast.len(), 1);
 }

@@ -470,13 +470,13 @@ fn test_enum_definition_and_usage() {
 
     let mut type_env = TypeEnv::new("test".to_string());
     let typed_ast = type_env.ast_to_typed_ast(program);
-    println!("typed_ast {:?}", typed_ast);
+    // println!("typed_ast {:?}", typed_ast);
 
     let resolved_ast = type_env.resolve_all(typed_ast);
-    println!("resolved_ast {:?}", resolved_ast);
+    // println!("resolved_ast {:?}", resolved_ast);
 
     let mono_ast = type_env.monomorphize_ast(resolved_ast);
-    println!("mono_ast {:?}", mono_ast);
+    // println!("mono_ast {:?}", mono_ast);
 
     assert!(type_env.errors.is_empty());
 
@@ -556,6 +556,34 @@ fn test_enum_pattern_matching() {
                     expr: Box::new((Expr::Variable("x".to_string()), 40..41)),
                     arms: vec![
                         MatchArm {
+                            pattern: Pattern::Guard(
+                                Box::new((
+                                    Pattern::EnumVariant {
+                                        enum_name: Some("Option".to_string()),
+                                        variant_name: "Some".to_string(),
+                                        subpatterns: vec![(
+                                            Pattern::Variable("value".to_string()),
+                                            55..60,
+                                        )],
+                                    },
+                                    50..75,
+                                )),
+                                (
+                                    Expr::BinOp {
+                                        operator: BinOp::Sub,
+                                        l_value: Box::new((
+                                            Expr::Variable("value".to_string()),
+                                            0..0,
+                                        )),
+                                        r_value: Box::new((Expr::Int(0), 0..0)),
+                                    },
+                                    70..75,
+                                ),
+                            ),
+                            body: Box::new((Expr::Variable("value".to_string()), 70..75)),
+                            range: 50..75,
+                        },
+                        MatchArm {
                             pattern: Pattern::EnumVariant {
                                 enum_name: Some("Option".to_string()),
                                 variant_name: "Some".to_string(),
@@ -592,6 +620,8 @@ fn test_enum_pattern_matching() {
     let mono_ast = type_env.monomorphize_ast(resolved_ast);
 
     assert!(type_env.errors.is_empty());
+
+    // println!("{:#?}", mono_ast);
 
     // Check that the match expression has type int
     if let TypedASTNode::Expr((TypedExpr { kind: _, ty, .. }, _)) = &mono_ast[2] {
@@ -860,7 +890,7 @@ fn test_basic_enum_matching() {
     // Validate pattern variable type
     if let TypedExprKind::Match { arms, .. } = &resolved_match.kind {
         if let TypedPattern::EnumVariant { subpatterns, .. } = &arms[0].pattern {
-            if let TypedPattern::Variable(_, ty) = &subpatterns[0] {
+            if let (TypedPattern::Variable(_, ty), _) = &subpatterns[0] {
                 assert_eq!(type_string(ty), "int");
             } else {
                 panic!("Expected variable pattern");
@@ -1237,13 +1267,13 @@ fn test_recursive_resolution() {
     if let TypedExprKind::Match { arms, .. } = &resolved_match.kind {
         if let TypedPattern::EnumVariant { subpatterns, .. } = &arms[0].pattern {
             // Head should be int
-            if let TypedPattern::Variable(_, ty) = &subpatterns[0] {
-                assert_eq!(type_string(ty), "int");
+            if let (TypedPattern::Variable(_, ty), _) = &subpatterns[0] {
+                assert_eq!(type_string(&ty), "int");
             }
 
             // Tail should be List<int>
-            if let TypedPattern::Variable(_, ty) = &subpatterns[1] {
-                assert_eq!(type_string(ty), "List<int>");
+            if let (TypedPattern::Variable(_, ty), _) = &subpatterns[1] {
+                assert_eq!(type_string(&ty), "List<int>");
             }
         }
     }
@@ -1315,15 +1345,15 @@ fn test_union_pattern_with_variables() {
     if let TypedExprKind::Match { arms, .. } = &typed_match.kind {
         if let TypedPattern::Union(subpatterns) = &arms[0].pattern {
             // First subpattern: num should be int
-            if let TypedPattern::EnumVariant { subpatterns, .. } = &subpatterns[0] {
-                if let TypedPattern::Variable(_, ty) = &subpatterns[0] {
+            if let (TypedPattern::EnumVariant { subpatterns, .. }, _) = &subpatterns[0] {
+                if let (TypedPattern::Variable(_, ty), _) = &subpatterns[0] {
                     assert_eq!(type_string(ty), "int");
                 }
             }
 
             // Second subpattern: str should be string
-            if let TypedPattern::EnumVariant { subpatterns, .. } = &subpatterns[1] {
-                if let TypedPattern::Variable(_, ty) = &subpatterns[0] {
+            if let (TypedPattern::EnumVariant { subpatterns, .. }, _) = &subpatterns[1] {
+                if let (TypedPattern::Variable(_, ty), _) = &subpatterns[0] {
                     assert_eq!(type_string(ty), "string");
                 }
             }

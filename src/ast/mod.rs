@@ -174,6 +174,7 @@ pub enum Pattern {
     },
     Union(Vec<(Pattern, Range<usize>)>),
     Tuple(Vec<(Pattern, Range<usize>)>),
+    Guard(Box<(Pattern, Range<usize>)>, (Expr, Range<usize>)),
     Literal(Expr), // For bool/int/float
     Wildcard,      // _
     Error,         // placeholder
@@ -352,11 +353,11 @@ pub enum TypedPattern {
     EnumVariant {
         enum_name: String,
         variant_name: String,
-        subpatterns: Vec<TypedPattern>,
+        subpatterns: Vec<(TypedPattern, Range<usize>)>,
     },
-    Union(Vec<TypedPattern>),
-
-    Tuple(Vec<TypedPattern>),
+    Union(Vec<(TypedPattern, Range<usize>)>),
+    Tuple(Vec<(TypedPattern, Range<usize>)>),
+    Guard(Box<(TypedPattern, Range<usize>)>, (TypedExpr, Range<usize>)),
     Literal(TypedExpr),
     Wildcard,
     Error,

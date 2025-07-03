@@ -338,22 +338,33 @@ impl TypeEnv<'_> {
                 variant_name,
                 subpatterns: subpatterns
                     .into_iter()
-                    .map(|p| self.resolve_pattern(p))
+                    .map(|(p, span)| (self.resolve_pattern(p), span))
                     .collect(),
             },
             TypedPattern::Union(subpatterns) => TypedPattern::Union(
                 subpatterns
                     .into_iter()
-                    .map(|p| self.resolve_pattern(p))
+                    .map(|(p, span)| (self.resolve_pattern(p), span))
                     .collect(),
             ),
             TypedPattern::Tuple(subpatterns) => TypedPattern::Tuple(
                 subpatterns
                     .into_iter()
-                    .map(|p| self.resolve_pattern(p))
+                    .map(|(p, span)| (self.resolve_pattern(p), span))
                     .collect(),
             ),
             TypedPattern::Literal(expr) => TypedPattern::Literal(self.resolve_expr(expr)),
+            TypedPattern::Guard(pattern, expr) => {
+                let (pattern, pattern_span) = *pattern;
+                let (expr, expr_span) = expr;
+
+                let resolved_pat = self.resolve_pattern(pattern);
+                let resolved_expr = self.resolve_expr(expr);
+                TypedPattern::Guard(
+                    Box::new((resolved_pat, pattern_span.clone())),
+                    (resolved_expr, expr_span),
+                )
+            }
             _ => pattern,
         }
     }

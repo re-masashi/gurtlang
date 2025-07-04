@@ -351,7 +351,26 @@ impl<'a> Parser<'a> {
                 };
                 let token = token.unwrap();
                 match token {
-                    Token::Variable(ref var) => Ok(TypeAnnot::Trait(var.clone())),
+                    Token::Variable(ref var) => {
+                        let mut traits = vec![var.clone()];
+                        // let r = Ok(TypeAnnot::Trait(vec!(var.clone())));
+                        if matches!(self.tokens.peek(), Some((_, _))) {
+                            if let Some((Ok(Token::Plus), _span)) = self.tokens.peek() {
+                                self.tokens.next();
+                            }
+                            while let Some((Ok(Token::Variable(_)), _span)) = self.tokens.peek() {
+                                let Some((Ok(Token::Variable(trait_name)), _span)) =
+                                    self.tokens.next()
+                                else {
+                                    unreachable!()
+                                };
+                                traits.push(trait_name);
+                            }
+                            todo!()
+                        } else {
+                            Ok(TypeAnnot::Trait(traits))
+                        }
+                    }
                     _ => Err((
                         ReportKind::Error,
                         Report::build(ReportKind::Error, (self.file.clone(), span.clone()))

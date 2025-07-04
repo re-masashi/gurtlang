@@ -38,7 +38,6 @@ fn test_error_recovery() {
     assert_eq!(lexer.next(), Some(Ok(Token::Variable("x".to_string()))));
 }
 
-
 #[test]
 fn test_raw_string_token() {
     let input = r#" """hello\nworld""" "#;
@@ -144,7 +143,10 @@ fn test_complex_expression() {
     let mut lexer = Token::lexer(input);
 
     assert_eq!(lexer.next(), Some(Ok(Token::KeywordLet)));
-    assert_eq!(lexer.next(), Some(Ok(Token::Variable("result".to_string()))));
+    assert_eq!(
+        lexer.next(),
+        Some(Ok(Token::Variable("result".to_string())))
+    );
     assert_eq!(lexer.next(), Some(Ok(Token::Assign)));
     assert_eq!(lexer.next(), Some(Ok(Token::LParen)));
     assert_eq!(lexer.next(), Some(Ok(Token::Int(10))));
@@ -152,7 +154,10 @@ fn test_complex_expression() {
     assert_eq!(lexer.next(), Some(Ok(Token::Int(5))));
     assert_eq!(lexer.next(), Some(Ok(Token::RParen)));
     assert_eq!(lexer.next(), Some(Ok(Token::Mul)));
-    assert_eq!(lexer.next(), Some(Ok(Token::Variable("my_var".to_string()))));
+    assert_eq!(
+        lexer.next(),
+        Some(Ok(Token::Variable("my_var".to_string())))
+    );
     assert_eq!(lexer.next(), Some(Ok(Token::Div)));
     assert_eq!(lexer.next(), Some(Ok(Token::Float(2.0))));
     assert_eq!(lexer.next(), Some(Ok(Token::Semicolon)));

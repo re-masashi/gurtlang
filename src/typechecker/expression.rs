@@ -46,6 +46,7 @@ impl TypeEnv<'_> {
                 TypedASTNode::Enum((typed_enum, span))
             }
             ASTNode::TypeAlias(_, _) => todo!(),
+            ASTNode::Impl(_) => todo!(),
         }
     }
 
@@ -783,37 +784,37 @@ impl TypeEnv<'_> {
             Expr::Lambda { args, expression } => {
                 // Save current environment
                 let old_vars = self.variables.clone();
-                
+
                 // Process arguments
                 let mut typed_args = Vec::new();
                 let mut param_types = Vec::new();
-                
+
                 for (arg_name, type_annot, arg_span) in args {
                     let arg_ty = if let Some(annot) = type_annot {
                         type_annot_to_type(annot)
                     } else {
                         self.new_typevar()
                     };
-                    
+
                     self.insert_var(arg_name.clone(), arg_ty.clone());
                     typed_args.push((arg_name.clone(), arg_ty.clone(), arg_span.clone()));
                     param_types.push(arg_ty.clone());
                 }
 
                 let (expression, body_span) = &**expression;
-                
+
                 // Type check body
                 let typed_body = self.expr_to_typed_expr((expression, body_span));
                 let return_type = typed_body.ty.clone();
-                
+
                 let lambda_type = self.resolve(Arc::new(Type::Function {
                     params: param_types,
                     return_type: return_type.clone(),
                 }));
-                
+
                 // Restore environment
                 self.variables = old_vars;
-                
+
                 (
                     TypedExprKind::Lambda {
                         args: typed_args,

@@ -204,9 +204,9 @@ impl TypeEnv<'_> {
                     .into_iter()
                     .map(|(name, ty, span)| (name, self.resolve(ty), span))
                     .collect();
-                
+
                 let resolved_body = self.resolve_expr(*expression);
-                
+
                 TypedExprKind::Lambda {
                     args: resolved_args,
                     expression: Box::new(resolved_body),
@@ -216,16 +216,17 @@ impl TypeEnv<'_> {
             TypedExprKind::Int(i) => TypedExprKind::Int(i),
             TypedExprKind::Float(f) => TypedExprKind::Float(f),
             TypedExprKind::String(s) => TypedExprKind::String(s),
-            
+
             TypedExprKind::Variable(name) => TypedExprKind::Variable(name),
-            
+
             TypedExprKind::Array { elements } => {
-                let resolved_elements = elements.into_iter()
-                    .map(|e| self.resolve_expr(e))
-                    .collect();
-                TypedExprKind::Array { elements: resolved_elements }
-            },
-            
+                let resolved_elements =
+                    elements.into_iter().map(|e| self.resolve_expr(e)).collect();
+                TypedExprKind::Array {
+                    elements: resolved_elements,
+                }
+            }
+
             TypedExprKind::Index { array, index } => {
                 let resolved_array = self.resolve_expr(*array);
                 let resolved_index = self.resolve_expr(*index);
@@ -233,29 +234,38 @@ impl TypeEnv<'_> {
                     array: Box::new(resolved_array),
                     index: Box::new(resolved_index),
                 }
-            },
-            
-            TypedExprKind::StructAccess { struct_val, field_name } => {
+            }
+
+            TypedExprKind::StructAccess {
+                struct_val,
+                field_name,
+            } => {
                 let resolved_struct = self.resolve_expr(*struct_val);
                 TypedExprKind::StructAccess {
                     struct_val: Box::new(resolved_struct),
                     field_name,
                 }
-            },
-            
-            TypedExprKind::MethodCall { struct_val, method_name, args } => {
+            }
+
+            TypedExprKind::MethodCall {
+                struct_val,
+                method_name,
+                args,
+            } => {
                 let resolved_struct = self.resolve_expr(*struct_val);
-                let resolved_args = args.into_iter()
-                    .map(|a| self.resolve_expr(a))
-                    .collect();
+                let resolved_args = args.into_iter().map(|a| self.resolve_expr(a)).collect();
                 TypedExprKind::MethodCall {
                     struct_val: Box::new(resolved_struct),
                     method_name,
                     args: resolved_args,
                 }
-            },
-            
-            TypedExprKind::Assign { l_value, r_value, assign_op } => {
+            }
+
+            TypedExprKind::Assign {
+                l_value,
+                r_value,
+                assign_op,
+            } => {
                 let resolved_l = self.resolve_expr(*l_value);
                 let resolved_r = self.resolve_expr(*r_value);
                 TypedExprKind::Assign {
@@ -263,24 +273,31 @@ impl TypeEnv<'_> {
                     l_value: Box::new(resolved_l),
                     r_value: Box::new(resolved_r),
                 }
-            },
-            
+            }
+
             TypedExprKind::UnOp { unop, expression } => {
                 let resolved_expr = self.resolve_expr(*expression);
                 TypedExprKind::UnOp {
                     unop,
                     expression: Box::new(resolved_expr),
                 }
-            },
-            
+            }
+
             TypedExprKind::Do { expressions } => {
-                let resolved_exprs = expressions.into_iter()
+                let resolved_exprs = expressions
+                    .into_iter()
                     .map(|e| self.resolve_expr(e))
                     .collect();
-                TypedExprKind::Do { expressions: resolved_exprs }
-            },
-            
-            TypedExprKind::IfElse { condition, if_branch, else_branch } => {
+                TypedExprKind::Do {
+                    expressions: resolved_exprs,
+                }
+            }
+
+            TypedExprKind::IfElse {
+                condition,
+                if_branch,
+                else_branch,
+            } => {
                 let resolved_cond = self.resolve_expr(*condition);
                 let resolved_if = self.resolve_expr(*if_branch);
                 let resolved_else = else_branch.map(|b| Box::new(self.resolve_expr(*b)));
@@ -289,17 +306,21 @@ impl TypeEnv<'_> {
                     if_branch: Box::new(resolved_if),
                     else_branch: resolved_else,
                 }
-            },
-            
+            }
+
             TypedExprKind::Tuple(elements) => {
-                let resolved_elements = elements.into_iter()
-                    .map(|e| self.resolve_expr(e))
-                    .collect();
+                let resolved_elements =
+                    elements.into_iter().map(|e| self.resolve_expr(e)).collect();
                 TypedExprKind::Tuple(resolved_elements)
-            },
-            
-            TypedExprKind::EnumVariant { enum_name, variant_name, fields } => {
-                let resolved_fields = fields.into_iter()
+            }
+
+            TypedExprKind::EnumVariant {
+                enum_name,
+                variant_name,
+                fields,
+            } => {
+                let resolved_fields = fields
+                    .into_iter()
                     .map(|(name, expr)| (name, self.resolve_expr(expr)))
                     .collect();
                 TypedExprKind::EnumVariant {
@@ -307,8 +328,8 @@ impl TypeEnv<'_> {
                     variant_name,
                     fields: resolved_fields,
                 }
-            },
-            
+            }
+
             TypedExprKind::Error => TypedExprKind::Error,
         };
 

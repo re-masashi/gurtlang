@@ -175,7 +175,7 @@ impl Parser<'_> {
             Token::KeywordDo => return self.parse_do(span_expression),
             Token::KeywordIf => return self.parse_if(span_expression),
             Token::KeywordReturn => self.parse_return(span_expression.clone()),
-            
+
             // Token::KeywordType => return self.parse_type_alias(span_expression),
             Token::KeywordMatch => return self.parse_match(span_expression),
 
@@ -884,19 +884,21 @@ impl Parser<'_> {
         };
 
         if let Ok(Token::LParen) = token {
-
         } else {
             self.errors.push((
                 ReportKind::Error,
-                Report::build(ReportKind::Error, (self.file.clone(), span_expression.clone()))
-                    .with_code("SyntaxError")
-                    .with_label(
-                        Label::new((self.file.clone(), span_expression.clone()))
-                            .with_message("expected '(' after 'fn'. found unexpected token")
-                            .with_color(ColorGenerator::new().next()),
-                    )
-                    .with_message("invalid syntax for`fn` expression")
-                    .finish(),
+                Report::build(
+                    ReportKind::Error,
+                    (self.file.clone(), span_expression.clone()),
+                )
+                .with_code("SyntaxError")
+                .with_label(
+                    Label::new((self.file.clone(), span_expression.clone()))
+                        .with_message("expected '(' after 'fn'. found unexpected token")
+                        .with_color(ColorGenerator::new().next()),
+                )
+                .with_message("invalid syntax for`fn` expression")
+                .finish(),
             ));
             return (Expr::Error, span);
         }
@@ -945,10 +947,13 @@ impl Parser<'_> {
             }
         }
         let (body, span) = self.parse_expression();
-        (Expr::Lambda {
-            args,
-            expression: Box::new((body, span.clone()))
-        }, span)
+        (
+            Expr::Lambda {
+                args,
+                expression: Box::new((body, span.clone())),
+            },
+            span,
+        )
 
         // let mut args = Vec::new();
         // todo!()

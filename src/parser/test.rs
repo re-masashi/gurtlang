@@ -480,9 +480,7 @@ fn test_strings() {
     println!("34th {}", input.chars().nth(34).unwrap());
 
     println!("35th {}", input.chars().nth(35).unwrap());
-    let (ast, parser) = parse_str(
-        input
-    );
+    let (ast, parser) = parse_str(input);
     assert!(parser.errors.is_empty());
     assert_eq!(ast.len(), 2);
 }
@@ -490,23 +488,21 @@ fn test_strings() {
 #[test]
 fn test_parse_lambda_basic() {
     let input = "fn(a: int, b) a + b";
-    let (ast, _parser) = parse_str(
-        input
-    );
+    let (ast, _parser) = parse_str(input);
 
     assert_eq!(ast.len(), 1);
-    
+
     if let (ASTNode::Expr((Expr::Lambda { args, expression }, _)), _) = &ast[0] {
         assert_eq!(args.len(), 2);
-        
+
         // First argument
         assert_eq!(args[0].0, "a");
         assert!(matches!(args[0].1, Some(TypeAnnot::Int)));
-        
+
         // Second argument
         assert_eq!(args[1].0, "b");
         assert!(args[1].1.is_none());
-        
+
         // Body expression
         let (body, _) = &**expression;
         assert!(matches!(body, Expr::BinOp { .. }));
@@ -518,15 +514,13 @@ fn test_parse_lambda_basic() {
 #[test]
 fn test_parse_lambda_no_args() {
     let input = "fn() 42";
-    let (ast, _parser) = parse_str(
-        input
-    );
+    let (ast, _parser) = parse_str(input);
 
     assert_eq!(ast.len(), 1);
-    
+
     if let (ASTNode::Expr((Expr::Lambda { args, expression }, _)), _) = &ast[0] {
         assert_eq!(args.len(), 0);
-        
+
         // Body expression
         let (body, _) = &**expression;
         assert!(matches!(body, Expr::Int(42)));
@@ -538,16 +532,14 @@ fn test_parse_lambda_no_args() {
 #[test]
 fn test_parse_lambda_nested() {
     let input = "fn(a) fn(b) a + b";
-    let (ast, _parser) = parse_str(
-        input
-    );
+    let (ast, _parser) = parse_str(input);
 
     assert_eq!(ast.len(), 1);
-    
+
     if let (ASTNode::Expr((Expr::Lambda { args, expression }, _)), _) = &ast[0] {
         assert_eq!(args.len(), 1);
         assert_eq!(args[0].0, "a");
-        
+
         // Inner lambda
         let (body, _) = &**expression;
         assert!(matches!(body, Expr::Lambda { .. }));
@@ -556,21 +548,18 @@ fn test_parse_lambda_nested() {
     }
 }
 
-
 #[test]
 fn test_parse_lambda_complex_body() {
     let input = "fn(x: float) do let y = x * 2.0; y + 1.0 end";
-    let (ast, _parser) = parse_str(
-        input
-    );
+    let (ast, _parser) = parse_str(input);
 
     assert_eq!(ast.len(), 1);
-    
+
     if let (ASTNode::Expr((Expr::Lambda { args, expression }, _)), _) = &ast[0] {
         assert_eq!(args.len(), 1);
         assert_eq!(args[0].0, "x");
         assert!(matches!(args[0].1, Some(TypeAnnot::Float)));
-        
+
         // Body expression
         let (body, _) = &**expression;
         assert!(matches!(body, Expr::Do { .. }));

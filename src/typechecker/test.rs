@@ -1507,7 +1507,7 @@ fn test_valid_nested_expressions() {
 #[test]
 fn test_lambda_basic() {
     let mut env = TypeEnv::new("test".to_string());
-    
+
     // Create lambda: fn(a: int, b: int) -> int { a + b }
     let lambda = Expr::Lambda {
         args: vec![
@@ -1520,89 +1520,75 @@ fn test_lambda_basic() {
                 l_value: Box::new((Expr::Variable("a".to_string()), 0..0)),
                 r_value: Box::new((Expr::Variable("b".to_string()), 0..0)),
             },
-            0..0
+            0..0,
         )),
     };
-    
+
     // Type check
     let typed_lambda = env.expr_to_typed_expr((&lambda, &(0..0)));
     let resolved = env.resolve_expr(typed_lambda);
-    
+
     // Verify type
-    assert_eq!(
-        type_string(&resolved.ty),
-        "fn(int, int) -> int"
-    );
+    assert_eq!(type_string(&resolved.ty), "fn(int, int) -> int");
 }
 
 #[test]
 fn test_lambda_inferred_types() {
     let mut env = TypeEnv::new("test".to_string());
-    
+
     // Create lambda: fn(a, b) a + b
     let lambda = Expr::Lambda {
-        args: vec![
-            ("a".to_string(), None, 0..0),
-            ("b".to_string(), None, 0..0),
-        ],
+        args: vec![("a".to_string(), None, 0..0), ("b".to_string(), None, 0..0)],
         expression: Box::new((
             Expr::BinOp {
                 operator: BinOp::Add,
                 l_value: Box::new((Expr::Variable("a".to_string()), 0..0)),
                 r_value: Box::new((Expr::Variable("b".to_string()), 0..0)),
             },
-            0..0
+            0..0,
         )),
     };
-    
+
     // Type check
     let typed_lambda = env.expr_to_typed_expr((&lambda, &(0..0)));
     let resolved = env.resolve_expr(typed_lambda);
-    
+
     // Verify type
-    assert_eq!(
-        type_string(&resolved.ty),
-        "fn(?T2, ?T2) -> ?T2"
-    );
+    assert_eq!(type_string(&resolved.ty), "fn(?T2, ?T2) -> ?T2");
 }
 
 #[test]
 fn test_lambda_closure() {
     let mut env = TypeEnv::new("test".to_string());
-    
+
     // Add outer variable
     env.insert_var("x".to_string(), t_int!());
-    
+
     // Create lambda: fn(a) a + x
     let lambda = Expr::Lambda {
-        args: vec![
-            ("a".to_string(), None, 0..0),
-        ],
+        args: vec![("a".to_string(), None, 0..0)],
         expression: Box::new((
             Expr::BinOp {
                 operator: BinOp::Add,
                 l_value: Box::new((Expr::Variable("a".to_string()), 0..0)),
                 r_value: Box::new((Expr::Variable("x".to_string()), 0..0)),
             },
-            0..0
+            0..0,
         )),
     };
-    
+
     // Type check
     let typed_lambda = env.expr_to_typed_expr((&lambda, &(0..0)));
     let resolved = env.resolve_expr(typed_lambda);
-    
+
     // Verify type
-    assert_eq!(
-        type_string(&resolved.ty),
-        "fn(int) -> int"
-    );
+    assert_eq!(type_string(&resolved.ty), "fn(int) -> int");
 }
 
 #[test]
 fn test_lambda_application() {
     let mut env = TypeEnv::new("test".to_string());
-    
+
     // Create lambda: fn(a: int, b: int) a + b
     let lambda = Expr::Lambda {
         args: vec![
@@ -1615,63 +1601,53 @@ fn test_lambda_application() {
                 l_value: Box::new((Expr::Variable("a".to_string()), 0..0)),
                 r_value: Box::new((Expr::Variable("b".to_string()), 0..0)),
             },
-            0..0
+            0..0,
         )),
     };
-    
+
     // Create application: (lambda)(3, 4)
     let application = Expr::Call {
         function: Box::new((lambda, 0..0)),
-        args: vec![
-            (Expr::Int(3), 0..0),
-            (Expr::Int(4), 0..0),
-        ],
+        args: vec![(Expr::Int(3), 0..0), (Expr::Int(4), 0..0)],
     };
-    
+
     // Type check
     let typed_app = env.expr_to_typed_expr((&application, &(0..0)));
     let resolved = env.resolve_expr(typed_app);
-    
+
     // Verify type
-    assert_eq!(
-        type_string(&resolved.ty),
-        "int"
-    );
+    assert_eq!(type_string(&resolved.ty), "int");
 }
 
 #[test]
 fn test_nested_lambdas() {
     let mut env = TypeEnv::new("test".to_string());
-    
+
     // Create nested lambda: fn(a) fn(b) a + b
     let inner_lambda = Expr::Lambda {
-        args: vec![
-            ("b".to_string(), Some(TypeAnnot::Int), 0..0),
-        ],
+        args: vec![("b".to_string(), Some(TypeAnnot::Int), 0..0)],
         expression: Box::new((
             Expr::BinOp {
                 operator: BinOp::Add,
                 l_value: Box::new((Expr::Variable("a".to_string()), 0..0)),
                 r_value: Box::new((Expr::Variable("b".to_string()), 0..0)),
             },
-            0..0
+            0..0,
         )),
     };
-    
+
     let outer_lambda = Expr::Lambda {
-        args: vec![
-            ("a".to_string(), None, 0..0),
-        ],
+        args: vec![("a".to_string(), None, 0..0)],
         expression: Box::new((inner_lambda, 0..0)),
     };
-    
+
     // Type check
     let typed_lambda = env.expr_to_typed_expr((&outer_lambda, &(0..0)));
-    
+
     let ast_node = TypedASTNode::Expr((typed_lambda, 0..0));
-    
+
     let resolved_ast = env.resolve_all(vec![ast_node]);
-    
+
     if let TypedASTNode::Expr((resolved_expr, _)) = &resolved_ast[0] {
         let type_str = type_string(&resolved_expr.ty);
         assert_eq!(type_str, "fn(int) -> fn(int) -> int");
@@ -1683,48 +1659,49 @@ fn test_nested_lambdas() {
 #[test]
 fn test_lambda_complex_body() {
     let mut env = TypeEnv::new("test".to_string());
-    
+
     // Create lambda: fn(x: float) { let y = x * 2.0; y + 1.0 }
     let lambda = Expr::Lambda {
-        args: vec![
-            ("x".to_string(), Some(TypeAnnot::Float), 0..0),
-        ],
+        args: vec![("x".to_string(), Some(TypeAnnot::Float), 0..0)],
         expression: Box::new((
             Expr::Do {
                 expressions: vec![
-                    (Expr::Let {
-                        var: "y".to_string(),
-                        type_annot: None,
-                        value: Box::new((
-                            Expr::BinOp {
-                                operator: BinOp::Mul,
-                                l_value: Box::new((Expr::Variable("x".to_string()), 0..0)),
-                                r_value: Box::new((Expr::Float(2.0), 0..0)),
-                            },
-                            0..0
-                        )),
-                    }, 0..0),
-                    (Expr::BinOp {
-                        operator: BinOp::Add,
-                        l_value: Box::new((Expr::Variable("y".to_string()), 0..0)),
-                        r_value: Box::new((Expr::Float(1.0), 0..0)),
-                    }, 0..0),
+                    (
+                        Expr::Let {
+                            var: "y".to_string(),
+                            type_annot: None,
+                            value: Box::new((
+                                Expr::BinOp {
+                                    operator: BinOp::Mul,
+                                    l_value: Box::new((Expr::Variable("x".to_string()), 0..0)),
+                                    r_value: Box::new((Expr::Float(2.0), 0..0)),
+                                },
+                                0..0,
+                            )),
+                        },
+                        0..0,
+                    ),
+                    (
+                        Expr::BinOp {
+                            operator: BinOp::Add,
+                            l_value: Box::new((Expr::Variable("y".to_string()), 0..0)),
+                            r_value: Box::new((Expr::Float(1.0), 0..0)),
+                        },
+                        0..0,
+                    ),
                 ],
             },
-            0..0
+            0..0,
         )),
     };
-    
+
     // Type check
     let typed_lambda = env.expr_to_typed_expr((&lambda, &(0..0)));
     let resolved = env.resolve_expr(typed_lambda);
-    
+
     // Verify type
-    assert_eq!(
-        type_string(&resolved.ty),
-        "fn(float) -> float"
-    );
-    
+    assert_eq!(type_string(&resolved.ty), "fn(float) -> float");
+
     // Verify no errors
     assert!(env.errors.is_empty());
 }

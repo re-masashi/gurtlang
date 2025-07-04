@@ -9,6 +9,7 @@ pub enum ASTNode {
     Struct(Struct),
     Enum(Enum, Range<usize>),
     TypeAlias(TypeAlias, Range<usize>),
+    Impl(Impl),
     Error, // dummy node for error recovery
 }
 
@@ -23,7 +24,7 @@ pub enum Expr {
 
     Variable(String),
     Return(Box<Expr>),
-    Lambda{
+    Lambda {
         args: Vec<(String, Option<TypeAnnot>, Range<usize>)>,
         expression: Box<(Expr, Range<usize>)>,
     },
@@ -157,6 +158,18 @@ pub struct Struct {
     pub fields: Vec<(String, TypeAnnot, Range<usize>)>,
 }
 
+#[derive(Debug)]
+pub struct Impl {
+    pub struct_: (String, Range<usize>),
+    pub trait_: Option<(Trait, Range<usize>)>,
+}
+
+#[derive(Debug)]
+pub struct Trait {
+    pub name: (String, Range<usize>),
+    pub generics: Vec<(String, Range<usize>)>,
+}
+
 #[derive(Debug, Clone)]
 pub struct MatchArm {
     pub pattern: Pattern,
@@ -223,7 +236,7 @@ pub enum TypeAnnot {
         return_type: Box<TypeAnnot>,
     },
     Tuple(Vec<TypeAnnot>),
-    Trait(String),
+    Trait(Vec<String>),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -234,7 +247,7 @@ pub enum Type {
         traits: Vec<String>,
     },
     Variable(usize),
-    Trait(String),
+    Trait(Vec<String>), // trait A + B
     Function {
         params: Vec<Arc<Type>>,
         return_type: Arc<Type>,
@@ -264,7 +277,7 @@ pub enum TypedExprKind {
 
     Return(Box<TypedExpr>),
 
-    Lambda{
+    Lambda {
         args: Vec<(String, Arc<Type>, Range<usize>)>,
         expression: Box<TypedExpr>,
     },

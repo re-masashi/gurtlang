@@ -217,7 +217,10 @@ fn type_string(ty: &Type) -> String {
                 .join(", ");
             format!("{}<{}>", name, generics)
         }
-        Type::Function { params, return_type } => {
+        Type::Function {
+            params,
+            return_type,
+        } => {
             let param_str = params
                 .iter()
                 .map(|t| type_string(t))
@@ -267,6 +270,8 @@ pub fn type_annot_to_type(type_annot: &TypeAnnot) -> Arc<Type> {
             let tuple = tuple.iter().map(type_annot_to_type).collect::<Vec<_>>();
             Arc::new(Type::Tuple(tuple))
         }
-        TypeAnnot::Trait(name) => Arc::new(Type::Trait(name.clone())),
+        TypeAnnot::Trait(names) => Arc::new(Type::Trait(
+            names.to_vec(),
+        )),
     }
 }

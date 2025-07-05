@@ -32,7 +32,7 @@ impl<'a> Parser<'a> {
             unreachable!() // never happens
         };
 
-        let Some((token, _span_name)) = self.tokens.next() else {
+        let Some((token, span_name)) = self.tokens.next() else {
             self.errors.push((
                 ReportKind::Error,
                 Report::build(
@@ -64,11 +64,11 @@ impl<'a> Parser<'a> {
                 ReportKind::Error,
                 Report::build(
                     ReportKind::Error,
-                    (self.file.clone(), span_function.clone()),
+                    (self.file.clone(), span_name.clone()),
                 )
                 .with_code("EOF")
                 .with_label(
-                    Label::new((self.file.clone(), span_function.clone()))
+                    Label::new((self.file.clone(), span_name.clone()))
                         .with_message(format!(
                             "expected function name after '{}'. got {} instead",
                             Fmt::fg("def", Color::Yellow).bold(),
@@ -80,7 +80,7 @@ impl<'a> Parser<'a> {
                 .with_message("found unexpected token after 'def'. expected a valid identifier.")
                 .finish(),
             ));
-            return (ASTNode::Error, span_function);
+            return (ASTNode::Error, span_name);
         };
 
         let Some((token, _span_starting_paren)) = self.tokens.next() else {
@@ -136,7 +136,7 @@ impl<'a> Parser<'a> {
                 ))
                 .finish(),
             ));
-            return (ASTNode::Error, span_function);
+            return (ASTNode::Error, span_name);
         };
 
         let mut args = vec![];
@@ -191,7 +191,7 @@ impl<'a> Parser<'a> {
                     body: Box::new(self.parse_expression()),
                     return_type: None,
                 }),
-                span_function,
+                span_name,
             );
         };
 
@@ -214,7 +214,7 @@ impl<'a> Parser<'a> {
                         body: Box::new(self.parse_expression()),
                         return_type: Some((return_type, span)),
                     }),
-                    span_function,
+                    span_name,
                 )
             }
             _ => (
@@ -224,7 +224,7 @@ impl<'a> Parser<'a> {
                     body: Box::new(self.parse_expression()),
                     return_type: None,
                 }),
-                span_function,
+                span_name,
             ),
         }
     }
@@ -366,10 +366,8 @@ impl<'a> Parser<'a> {
                                 };
                                 traits.push(trait_name);
                             }
-                            todo!()
-                        } else {
-                            Ok(TypeAnnot::Trait(traits))
                         }
+                        Ok(TypeAnnot::Trait(traits))
                     }
                     _ => Err((
                         ReportKind::Error,

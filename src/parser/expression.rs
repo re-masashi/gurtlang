@@ -364,8 +364,11 @@ impl Parser<'_> {
                     }
                 } // index
                 Token::LParen => {
-                    self.tokens.next();
+                    let Some((_, _span_l_paren)) = self.tokens.next() else {
+                        unreachable!()
+                    };
                     let mut args = vec![];
+                    let span_r_paren;
                     loop {
                         let Some((token, _span_expression)) = self.tokens.peek() else {
                             self.errors.push((
@@ -387,11 +390,14 @@ impl Parser<'_> {
                             return (Expr::Error, span_expression);
                         };
                         if token.clone().unwrap() == Token::RParen {
-                            self.tokens.next();
+                            let Some((_, span_r)) = self.tokens.next() else {
+                                unreachable!()
+                            };
+                            span_r_paren = span_r;
                             break;
                         }
                         args.push(self.parse_expression());
-                        let Some((token, span_expression)) = self.tokens.next() else {
+                        let Some((token, span_next)) = self.tokens.next() else {
                             self.errors.push((
                                 ReportKind::Error,
                                     Report::build(ReportKind::Error, (self.file.clone(), span_start.clone()))
@@ -413,6 +419,7 @@ impl Parser<'_> {
                         };
                         match token.unwrap() {
                             Token::RParen => {
+                                span_r_paren = span_next;
                                 break;
                             }
                             Token::Comma => {
@@ -440,12 +447,17 @@ impl Parser<'_> {
                             }
                         }
                     }
+                    let span_call = if args.len() == 0 {
+                        span_expression.start..span_r_paren.end
+                    } else {
+                        span_expression.start..span_r_paren.end
+                    };
                     l_expr = (
                         Expr::Call {
                             function: Box::new(l_expr),
                             args,
                         },
-                        span_expression.clone(),
+                        span_call,
                     );
                 } // call
 

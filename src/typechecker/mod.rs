@@ -270,8 +270,6 @@ pub fn type_annot_to_type(type_annot: &TypeAnnot) -> Arc<Type> {
             let tuple = tuple.iter().map(type_annot_to_type).collect::<Vec<_>>();
             Arc::new(Type::Tuple(tuple))
         }
-        TypeAnnot::Trait(names) => Arc::new(Type::Trait(
-            names.to_vec(),
-        )),
+        TypeAnnot::Trait(names) => Arc::new(Type::Trait(names.to_vec())),
     }
 }

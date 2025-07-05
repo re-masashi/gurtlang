@@ -1,10 +1,5 @@
-def print(a: string, b: string, c: trait Printable, d: List<List<int>>)
-	print(a)
-
 def identity(n)
 	n
 
 identity(1)
 identity("aaa")
-
-

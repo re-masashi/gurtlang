@@ -414,4 +414,55 @@ impl TypeEnv<'_> {
                 .collect(),
         }
     }
+
+    pub fn resolve(&self, ty: Arc<Type>) -> Arc<Type> {
+        let resolved = match &*ty {
+            Type::Variable(i) => {
+                return self
+                    .substitutions
+                    .get(i)
+                    .map(|t| self.resolve(t.clone()))
+                    .unwrap_or(ty);
+            }
+            Type::Constructor {
+                name,
+                generics,
+                traits,
+            } => {
+                let resolved_generics = generics.iter().map(|t| self.resolve(t.clone())).collect();
+                Arc::new(Type::Constructor {
+                    name: name.clone(),
+                    generics: resolved_generics,
+                    traits: traits.clone(),
+                })
+            }
+            Type::Function {
+                params,
+                return_type,
+            } => {
+                let resolved_params = params.iter().map(|t| self.resolve(t.clone())).collect();
+                let resolved_return = self.resolve(return_type.clone());
+                Arc::new(Type::Function {
+                    params: resolved_params,
+                    return_type: resolved_return,
+                })
+            }
+            Type::Tuple(types) => {
+                let resolved_types = types.iter().map(|t| self.resolve(t.clone())).collect();
+                Arc::new(Type::Tuple(resolved_types))
+            }
+            Type::Union(types) => {
+                let resolved_types = types.iter().map(|t| self.resolve(t.clone())).collect();
+                Arc::new(Type::Union(resolved_types))
+            }
+            _ => ty.clone(),
+        };
+
+        // If we resolved to a variable, resolve again
+        if let Type::Variable(_) = *resolved {
+            self.resolve(resolved)
+        } else {
+            resolved
+        }
+    }
 }

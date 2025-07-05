@@ -153,6 +153,11 @@ impl TypeEnv<'_> {
                             self.specialize_function_at_call(generic_func, &new_args);
                         let spec_name = specialized_func.name.clone();
 
+                        let func_ty = Arc::new(Type::Function {
+                            params: specialized_func.args.iter().map(|(_, ty, _)| ty.clone()).collect(),
+                            return_type: specialized_func.return_type.0.clone(),
+                        });
+
                         // Store specialized function
                         specialized_fns.insert(
                             spec_name.clone(),
@@ -164,12 +169,11 @@ impl TypeEnv<'_> {
                             kind: TypedExprKind::Call {
                                 function: Box::new(TypedExpr {
                                     kind: TypedExprKind::Variable(spec_name),
-                                    ty: new_function.ty,
+                                    ty: func_ty,
                                     range: new_function.range,
                                 }),
                                 args: new_args,
                             },
-                            // FIXED: Use the specialized function's return type
                             ty: specialized_func.return_type.0.clone(),
                             range: expr.range,
                         };
@@ -308,7 +312,7 @@ impl TypeEnv<'_> {
     }
 
     fn specialize_function_at_call(
-        &self,
+        &mut self,  // Changed to mutable
         func: &TypedFunction,
         args: &[TypedExpr],
     ) -> TypedFunction {
@@ -319,53 +323,49 @@ impl TypeEnv<'_> {
         for (i, (_, param_ty, _)) in func.args.iter().enumerate() {
             if let Type::Variable(id) = &**param_ty {
                 let resolved_ty = self.resolve_deep(args[i].ty.clone());
-                if let Some(existing) = type_map.get(id) {
-                    if *existing != resolved_ty {
-                        panic!(
-                            "Type variable T{} inferred as both {:?} and {:?}",
-                            id, existing, resolved_ty
-                        );
-                    }
-                } else {
-                    type_map.insert(*id, resolved_ty);
-                }
+                type_map.insert(*id, resolved_ty);
             }
         }
 
-        // Generate unique name based on argument types
-        let arg_types: Vec<String> = args
-            .iter()
-            .map(|arg| type_signature_string(&arg.ty))
-            .collect();
-
-        // Include return type in the signature for full uniqueness
-        let return_type = self.substitute_type(&func.return_type.0, &type_map);
-        let return_str = type_signature_string(&return_type);
-
-        let signature = format!("{}_{}_to_{}", func.name, arg_types.join("_"), return_str);
-
-        // Sanitize the name for use as an identifier
-        let spec_name = sanitize_identifier(&signature);
-        specialized.name = spec_name;
-
-        // Apply type mapping to function signature
+        // Apply type mapping to function signature with RESOLUTION
         specialized.args = func
             .args
             .iter()
             .map(|(name, ty, span)| {
-                let new_ty = self.substitute_type(ty, &type_map);
-                (name.clone(), new_ty, span.clone())
+                let substituted = self.substitute_type(ty, &type_map);
+                let resolved = self.resolve_deep(substituted);  // RESOLVE AFTER SUBSTITUTION
+                (name.clone(), resolved, span.clone())
             })
             .collect();
 
-        specialized.return_type.0 = return_type;
+        // RESOLVE RETURN TYPE
+        let return_type = self.resolve_deep(
+            self.substitute_type(&func.return_type.0, &type_map)
+        );
+        specialized.return_type.0 = return_type.clone();
 
-        // Apply substitution to function body
+        // Generate unique name based on CONCRETE TYPES
+        let arg_types: Vec<String> = specialized.args.iter()
+            .map(|(_, ty, _)| type_signature_string(ty))
+            .collect();
+        
+        println!("{:?}", specialized.args);
+
+        let return_str = type_signature_string(&return_type);
+        let signature = format!("{}_{}_to_{}", func.name, arg_types.join("_"), return_str);
+        let spec_name = sanitize_identifier(&signature);
+        specialized.name = spec_name;
+
+        // Apply substitution and RESOLUTION to function body
         let (body_expr, body_span) = *func.body.clone();
-        specialized.body = Box::new((self.substitute_in_expr(body_expr, &type_map), body_span));
+        let substituted_body = self.substitute_in_expr(body_expr, &type_map);
+        let resolved_body = self.resolve_expr(substituted_body);  // RESOLVE BODY
+        specialized.body = Box::new((resolved_body, body_span));
+
 
         specialized
     }
+
     fn substitute_in_expr(
         &self,
         expr: TypedExpr,

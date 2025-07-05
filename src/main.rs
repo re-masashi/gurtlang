@@ -16,7 +16,7 @@ use logos::Logos;
 use std::fs;
 
 fn main() {
-    let filepath = "examples/7.gurt".to_string();
+    let filepath = "examples/3.gurt".to_string();
 
     let contents =
         fs::read_to_string(&filepath).expect("Should have been able to read the file :/");
@@ -59,7 +59,7 @@ fn main() {
     let resolved_ast = type_env.resolve_all(typed_ast);
     let mono_ast = type_env.monomorphize_ast(resolved_ast);
 
-    println!("{:#?}", mono_ast);
+    // println!("{:#?}", mono_ast);
 
     let validation_errors = validation::validate_ast(mono_ast, filepath.clone());
     for (_, span, _error) in validation_errors {

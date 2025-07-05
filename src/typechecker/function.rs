@@ -37,16 +37,33 @@ impl TypeEnv<'_> {
                 }
             })
             .collect::<Vec<_>>();
+        let arg_types: Vec<_> = typed_args.iter().map(|(_, ty, _)| ty.clone()).collect();
+        let provisional_return_type = match return_type {
+            Some((ty, _)) => type_annot_to_type(ty),
+            None => self.new_typevar(),
+        };
+
+        let function_type = Arc::new(Type::Function {
+            params: arg_types,
+            return_type: provisional_return_type.clone(),
+        });
+
+        self.insert_var(name.clone(), function_type.clone());
+
         let (body, body_span) = &**body;
         let typed_body = (
             self.expr_to_typed_expr((body, body_span)),
             body_span.clone(),
         );
+        self.unify(typed_body.0.ty.clone(), provisional_return_type.clone(), body_span, body_span);
+
         self.in_function = was_in_function;
+
+        let final_return_type = self.resolve_deep(provisional_return_type);
 
         let typed_return_type = match return_type {
             Some((return_type, span)) => (type_annot_to_type(return_type), span.clone()),
-            None => (typed_body.0.ty.clone(), typed_body.0.range.clone()),
+            None => (final_return_type, typed_body.0.range.clone()),
         };
         let function_type = Arc::new(Type::Function {
             params: typed_args.iter().map(|(_, ty, _)| ty.clone()).collect(),

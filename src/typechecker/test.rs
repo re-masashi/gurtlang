@@ -1708,76 +1708,98 @@ fn test_lambda_complex_body() {
     assert!(env.errors.is_empty());
 }
 
-// #[test]
-// fn test_recursive_function() {
-//     let mut env = TypeEnv::new("test.rs".to_string());
+#[test]
+fn test_recursive_function() {
+    // Initialize a TypeEnv for type checking
+    let mut env = TypeEnv::new("test.rs".to_string());
 
-//     let fact_call = Expr::Call {
-//         function: Box::new((Expr::Variable("fact".to_string()), 41..44)),
-//         args: vec![(
-//             Expr::BinOp {
-//                 operator: BinOp::Sub,
-//                 l_value: Box::new((Expr::Variable("val".to_string()), 52..55)),
-//                 r_value: Box::new((Expr::Int(1), 56..57)),
-//             },
-//             52..57,
-//         )],
-//     };
+    // Define the recursive call 'fact(val - 1)' separately to be embedded
+    let fact_call_recursive = Expr::Call {
+        function: Box::new((Expr::Variable("fact".to_string()), 41..44)), // Range for 'fact' in the call
+        args: vec![(
+            Expr::BinOp {
+                operator: BinOp::Sub,
+                l_value: Box::new((Expr::Variable("val".to_string()), 52..55)), // Range for 'val'
+                r_value: Box::new((Expr::Int(1), 56..57)), // Range for '1'
+            },
+            52..57, // Range for the 'val - 1' expression
+        )],
+    };
 
-//     // Build factorial function AST
-//     let fact_function = Function {
-//         name: "fact".to_string(),
-//         args: vec![("val".to_string(), None, 5..8)],
-//         body: Box::new((
-//             Expr::IfElse {
-//                 condition: Box::new((
-//                     Expr::BinOp {
-//                         operator: BinOp::LessEq,
-//                         l_value: Box::new((Expr::Variable("val".to_string()), 15..18)),
-//                         r_value: Box::new((Expr::Int(1), 22..23)),
-//                     },
-//                     15..23,
-//                 )),
-//                 if_branch: Box::new((Expr::Int(1), 29..30)),
-//                 else_branch: Some(Box::new((
-//                     Expr::BinOp {
-//                         operator: BinOp::Mul,
-//                         l_value: Box::new((Expr::Variable("val".to_string()), 15..18)),
-//                         r_value: Box::new((fact_call, 52..72)),
-//                     },
-//                     52..72,
-//                 ))),
-//             },
-//             10..60,
-//         )),
-//         return_type: None,
-//     };
+    // Build the AST for the 'fact' function
+    let fact_function = Function {
+        name: "fact".to_string(),
+        args: vec![("val".to_string(), None, 5..8)], // 'val' parameter with no explicit type annotation
+        body: Box::new((
+            Expr::IfElse {
+                condition: Box::new((
+                    Expr::BinOp {
+                        operator: BinOp::LessEq,
+                        l_value: Box::new((Expr::Variable("val".to_string()), 15..18)), // 'val' in condition
+                        r_value: Box::new((Expr::Int(1), 22..23)), // '1' in condition
+                    },
+                    15..23, // Range for 'val <= 1'
+                )),
+                if_branch: Box::new((Expr::Int(1), 29..30)), // '1' in the if branch
+                else_branch: Some(Box::new((
+                    Expr::BinOp {
+                        operator: BinOp::Mul,
+                        l_value: Box::new((Expr::Variable("val".to_string()), 37..40)), // 'val' in else branch
+                        r_value: Box::new((fact_call_recursive, 41..57)), // The recursive call 'fact(val - 1)'
+                    },
+                    37..57, // Range for 'val * fact(val - 1)'
+                ))),
+            },
+            10..60, // Range for the entire if-else body
+        )),
+        return_type: None, // No explicit return type annotation
+    };
 
-//     // Convert to typed function
-//     let (typed_func, _) = env.function_to_typed_function((&fact_function, &(0..0)));
+    // Define the top-level program as a vector of ASTNodes
+    // This includes the function definition and the final call to 'fact(4)'
+    let fact_program = vec![
+        (ASTNode::Function(fact_function), 0..0), // Range for the entire function definition node
+        (ASTNode::Expr((
+            Expr::Call {
+                function: Box::new((Expr::Variable("fact".to_string()), 62..66)), // Range for 'fact' in the top-level call
+                args: vec![(
+                    Expr::Int(4), // Argument for the top-level call
+                    67..68, // Range for the '4' literal
+                )],
+            },
+            62..69, // Range for the 'fact(4)' expression
+        )), 0..0) // Range for the entire expression node
+    ];
 
-//     // Verify function type is resolved
-//     assert_eq!(type_string(&typed_func.return_type.0), "fn(int) -> int");
+    // Attempt to type-check the AST
+    let typed_ast = env.ast_to_typed_ast(fact_program);
+    let typed_ast = env.resolve_all(typed_ast);
+    let typed_ast = env.monomorphize_ast(typed_ast);
 
-//     // Verify body type
-//     if let TypedExprKind::IfElse {
-//         condition,
-//         if_branch,
-//         else_branch,
-//     } = &typed_func.body.0.kind
-//     {
-//         // Verify condition type
-//         assert_eq!(type_string(&condition.ty), "bool");
+    assert!(!typed_ast.is_empty(), "The typed AST should not be empty after processing.");
 
-//         // Verify if branch type
-//         assert_eq!(type_string(&if_branch.ty), "int");
+    if let Some(TypedASTNode::Function((typed_fact_fn, _))) = typed_ast.get(0) {
+        assert_eq!(typed_fact_fn.name, "fact", "Function name should be 'fact'");
+        assert_eq!(typed_fact_fn.args.len(), 1, "Fact function should have 1 argument");
 
-//         // Verify else branch type
-//         if let Some(else_expr) = else_branch {
-//             assert_eq!(type_string(&else_expr.ty), "int");
-//         }
-//     }
-// }
+        if let Some((arg_name, arg_type, _)) = typed_fact_fn.args.get(0) {
+            assert_eq!(arg_name, "val", "Argument name should be 'val'");
+            if let Type::Constructor { name, .. } = &**arg_type {
+                assert_eq!(name, "int", "Argument 'val' should be inferred as 'int'");
+            } else {
+                panic!("Argument 'val' type is not a constructor type. it is {:?}", arg_type);
+            }
+        }
+
+        if let Type::Constructor { name, .. } = &*typed_fact_fn.return_type.0 {
+            assert_eq!(name, "int", "Function return type should be inferred as 'int'");
+        } else {
+            panic!("Function return type is not a constructor type.");
+        }
+    } else {
+        panic!("The typed AST did not contain the 'fact' function at the expected position.");
+    }
+}
 
 #[test]
 fn test_function_type_resolution() {

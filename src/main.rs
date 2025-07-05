@@ -59,7 +59,7 @@ fn main() {
     let resolved_ast = type_env.resolve_all(typed_ast);
     let mono_ast = type_env.monomorphize_ast(resolved_ast);
 
-    // println!("{:#?}", mono_ast);
+    println!("{:#?}", mono_ast);
 
     let validation_errors = validation::validate_ast(mono_ast, filepath.clone());
     for (_, span, _error) in validation_errors {

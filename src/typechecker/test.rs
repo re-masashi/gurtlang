@@ -8,11 +8,13 @@ use crate::ast::MatchArm;
 use crate::ast::Pattern;
 use crate::ast::Struct;
 use crate::ast::TypedASTNode;
+use crate::ast::TypedFunction;
 use crate::ast::TypedPattern;
 use crate::ast::UnOp;
 use crate::ast::{BinOp, Expr, Type, TypedExpr, TypedExprKind};
 use crate::t_float;
 use crate::t_int;
+use crate::t_string;
 
 #[test]
 fn test_simple_addition() {
@@ -1704,4 +1706,243 @@ fn test_lambda_complex_body() {
 
     // Verify no errors
     assert!(env.errors.is_empty());
+}
+
+// #[test]
+// fn test_recursive_function() {
+//     let mut env = TypeEnv::new("test.rs".to_string());
+
+//     let fact_call = Expr::Call {
+//         function: Box::new((Expr::Variable("fact".to_string()), 41..44)),
+//         args: vec![(
+//             Expr::BinOp {
+//                 operator: BinOp::Sub,
+//                 l_value: Box::new((Expr::Variable("val".to_string()), 52..55)),
+//                 r_value: Box::new((Expr::Int(1), 56..57)),
+//             },
+//             52..57,
+//         )],
+//     };
+
+//     // Build factorial function AST
+//     let fact_function = Function {
+//         name: "fact".to_string(),
+//         args: vec![("val".to_string(), None, 5..8)],
+//         body: Box::new((
+//             Expr::IfElse {
+//                 condition: Box::new((
+//                     Expr::BinOp {
+//                         operator: BinOp::LessEq,
+//                         l_value: Box::new((Expr::Variable("val".to_string()), 15..18)),
+//                         r_value: Box::new((Expr::Int(1), 22..23)),
+//                     },
+//                     15..23,
+//                 )),
+//                 if_branch: Box::new((Expr::Int(1), 29..30)),
+//                 else_branch: Some(Box::new((
+//                     Expr::BinOp {
+//                         operator: BinOp::Mul,
+//                         l_value: Box::new((Expr::Variable("val".to_string()), 15..18)),
+//                         r_value: Box::new((fact_call, 52..72)),
+//                     },
+//                     52..72,
+//                 ))),
+//             },
+//             10..60,
+//         )),
+//         return_type: None,
+//     };
+
+//     // Convert to typed function
+//     let (typed_func, _) = env.function_to_typed_function((&fact_function, &(0..0)));
+
+//     // Verify function type is resolved
+//     assert_eq!(type_string(&typed_func.return_type.0), "fn(int) -> int");
+
+//     // Verify body type
+//     if let TypedExprKind::IfElse {
+//         condition,
+//         if_branch,
+//         else_branch,
+//     } = &typed_func.body.0.kind
+//     {
+//         // Verify condition type
+//         assert_eq!(type_string(&condition.ty), "bool");
+
+//         // Verify if branch type
+//         assert_eq!(type_string(&if_branch.ty), "int");
+
+//         // Verify else branch type
+//         if let Some(else_expr) = else_branch {
+//             assert_eq!(type_string(&else_expr.ty), "int");
+//         }
+//     }
+// }
+
+#[test]
+fn test_function_type_resolution() {
+    let mut env = TypeEnv::new("test.rs".to_string());
+
+    // Create a function type with type variables
+    let func_type = Arc::new(Type::Function {
+        params: vec![tvar!(1), tvar!(2)],
+        return_type: tvar!(1),
+    });
+
+    // Add substitutions
+    env.substitutions.insert(1, t_int!());
+    env.substitutions.insert(2, t_string!());
+
+    // Resolve the function type
+    let resolved = env.resolve(func_type);
+
+    // Verify resolution
+    if let Type::Function {
+        params,
+        return_type,
+    } = &*resolved
+    {
+        assert_eq!(params.len(), 2);
+        assert_eq!(type_string(&params[0]), "int");
+        assert_eq!(type_string(&params[1]), "string");
+        assert_eq!(type_string(return_type), "int");
+    } else {
+        panic!("Expected function type");
+    }
+}
+
+#[test]
+fn test_monomorphization() {
+    let mut env = TypeEnv::new("test.rs".to_string());
+
+    // Build identity function AST
+    let identity_function = TypedFunction {
+        name: "identity".to_string(),
+        args: vec![("n".to_string(), tvar!(1), 10..11)],
+        body: Box::new((
+            TypedExpr {
+                kind: TypedExprKind::Variable("n".to_string()),
+                ty: tvar!(1),
+                range: 15..16,
+            },
+            15..16,
+        )),
+        return_type: (tvar!(1), 15..16),
+    };
+
+    // Build call expressions
+    let int_call = TypedASTNode::Expr((
+        TypedExpr {
+            kind: TypedExprKind::Call {
+                function: Box::new(TypedExpr {
+                    kind: TypedExprKind::Variable("identity".to_string()),
+                    ty: Arc::new(Type::Function {
+                        params: vec![tvar!(1)],
+                        return_type: tvar!(1),
+                    }),
+                    range: 20..28,
+                }),
+                args: vec![TypedExpr {
+                    kind: TypedExprKind::Int(1),
+                    ty: t_int!(),
+                    range: 29..30,
+                }],
+            },
+            ty: tvar!(1),
+            range: 20..31,
+        },
+        20..31,
+    ));
+
+    let string_call = TypedASTNode::Expr((
+        TypedExpr {
+            kind: TypedExprKind::Call {
+                function: Box::new(TypedExpr {
+                    kind: TypedExprKind::Variable("identity".to_string()),
+                    ty: Arc::new(Type::Function {
+                        params: vec![tvar!(1)],
+                        return_type: tvar!(1),
+                    }),
+                    range: 32..40,
+                }),
+                args: vec![TypedExpr {
+                    kind: TypedExprKind::String("aaa".to_string()),
+                    ty: t_string!(),
+                    range: 41..46,
+                }],
+            },
+            ty: tvar!(1),
+            range: 32..47,
+        },
+        32..47,
+    ));
+
+    // Create AST
+    let ast = vec![
+        TypedASTNode::Function((identity_function, 4..12)),
+        int_call,
+        string_call,
+    ];
+
+    // Monomorphize AST
+    let mono_ast = env.monomorphize_ast(ast);
+
+    // Verify we have 2 specialized functions + 2 call expressions
+    assert_eq!(mono_ast.len(), 4);
+
+    // Verify specialized functions
+    let mut found_int_fn = false;
+    let mut found_string_fn = false;
+
+    for node in &mono_ast {
+        if let TypedASTNode::Function((func, _)) = node {
+            if func.name.starts_with("identity_") {
+                if func.args[0].1 == t_int!() {
+                    found_int_fn = true;
+                    assert_eq!(func.return_type.0, t_int!());
+                } else if func.args[0].1 == t_string!() {
+                    found_string_fn = true;
+                    assert_eq!(func.return_type.0, t_string!());
+                }
+            }
+        }
+    }
+
+    assert!(found_int_fn);
+    assert!(found_string_fn);
+
+    // Verify call expressions
+    let mut found_int_call = false;
+    let mut found_string_call = false;
+
+    for node in &mono_ast {
+        if let TypedASTNode::Expr((expr, _)) = node {
+            if let TypedExprKind::Call { function, .. } = &expr.kind {
+                if let TypedExprKind::Variable(name) = &function.kind {
+                    if name.starts_with("identity_") {
+                        // Verify function type is concrete
+                        if let Type::Function {
+                            params,
+                            return_type,
+                        } = &*function.ty
+                        {
+                            assert!(!params.iter().any(|t| matches!(**t, Type::Variable(_))));
+                            assert!(!matches!(**return_type, Type::Variable(_)));
+
+                            if params[0] == t_int!() {
+                                found_int_call = true;
+                                assert_eq!(**return_type, *t_int!());
+                            } else if params[0] == t_string!() {
+                                found_string_call = true;
+                                assert_eq!(**return_type, *t_string!());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(found_int_call);
+    assert!(found_string_call);
 }

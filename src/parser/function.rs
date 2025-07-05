@@ -62,23 +62,22 @@ impl<'a> Parser<'a> {
         } else {
             self.errors.push((
                 ReportKind::Error,
-                Report::build(
-                    ReportKind::Error,
-                    (self.file.clone(), span_name.clone()),
-                )
-                .with_code("EOF")
-                .with_label(
-                    Label::new((self.file.clone(), span_name.clone()))
-                        .with_message(format!(
-                            "expected function name after '{}'. got {} instead",
-                            Fmt::fg("def", Color::Yellow).bold(),
-                            Fmt::fg(format!("{:?}", token), Color::BrightRed).bold(),
-                        ))
-                        .with_color(ColorGenerator::new().next()),
-                )
-                .with_note(function_syntax())
-                .with_message("found unexpected token after 'def'. expected a valid identifier.")
-                .finish(),
+                Report::build(ReportKind::Error, (self.file.clone(), span_name.clone()))
+                    .with_code("EOF")
+                    .with_label(
+                        Label::new((self.file.clone(), span_name.clone()))
+                            .with_message(format!(
+                                "expected function name after '{}'. got {} instead",
+                                Fmt::fg("def", Color::Yellow).bold(),
+                                Fmt::fg(format!("{:?}", token), Color::BrightRed).bold(),
+                            ))
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_note(function_syntax())
+                    .with_message(
+                        "found unexpected token after 'def'. expected a valid identifier.",
+                    )
+                    .finish(),
             ));
             return (ASTNode::Error, span_name);
         };

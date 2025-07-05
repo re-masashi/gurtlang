@@ -154,7 +154,11 @@ impl TypeEnv<'_> {
                         let spec_name = specialized_func.name.clone();
 
                         let func_ty = Arc::new(Type::Function {
-                            params: specialized_func.args.iter().map(|(_, ty, _)| ty.clone()).collect(),
+                            params: specialized_func
+                                .args
+                                .iter()
+                                .map(|(_, ty, _)| ty.clone())
+                                .collect(),
                             return_type: specialized_func.return_type.0.clone(),
                         });
 
@@ -312,7 +316,7 @@ impl TypeEnv<'_> {
     }
 
     fn specialize_function_at_call(
-        &mut self,  // Changed to mutable
+        &mut self, // Changed to mutable
         func: &TypedFunction,
         args: &[TypedExpr],
     ) -> TypedFunction {
@@ -333,22 +337,22 @@ impl TypeEnv<'_> {
             .iter()
             .map(|(name, ty, span)| {
                 let substituted = self.substitute_type(ty, &type_map);
-                let resolved = self.resolve_deep(substituted);  // RESOLVE AFTER SUBSTITUTION
+                let resolved = self.resolve_deep(substituted); // RESOLVE AFTER SUBSTITUTION
                 (name.clone(), resolved, span.clone())
             })
             .collect();
 
         // RESOLVE RETURN TYPE
-        let return_type = self.resolve_deep(
-            self.substitute_type(&func.return_type.0, &type_map)
-        );
+        let return_type = self.resolve_deep(self.substitute_type(&func.return_type.0, &type_map));
         specialized.return_type.0 = return_type.clone();
 
         // Generate unique name based on CONCRETE TYPES
-        let arg_types: Vec<String> = specialized.args.iter()
+        let arg_types: Vec<String> = specialized
+            .args
+            .iter()
             .map(|(_, ty, _)| type_signature_string(ty))
             .collect();
-        
+
         println!("{:?}", specialized.args);
 
         let return_str = type_signature_string(&return_type);
@@ -359,9 +363,8 @@ impl TypeEnv<'_> {
         // Apply substitution and RESOLUTION to function body
         let (body_expr, body_span) = *func.body.clone();
         let substituted_body = self.substitute_in_expr(body_expr, &type_map);
-        let resolved_body = self.resolve_expr(substituted_body);  // RESOLVE BODY
+        let resolved_body = self.resolve_expr(substituted_body); // RESOLVE BODY
         specialized.body = Box::new((resolved_body, body_span));
-
 
         specialized
     }

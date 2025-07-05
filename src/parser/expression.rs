@@ -447,11 +447,7 @@ impl Parser<'_> {
                             }
                         }
                     }
-                    let span_call = if args.len() == 0 {
-                        span_expression.start..span_r_paren.end
-                    } else {
-                        span_expression.start..span_r_paren.end
-                    };
+                    let span_call = span_expression.start..span_r_paren.end;
                     l_expr = (
                         Expr::Call {
                             function: Box::new(l_expr),

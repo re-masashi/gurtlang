@@ -86,27 +86,26 @@ fn _main(path: &str) {
     println!("Gurt: Yo");
 }
 
-fn main(){
+fn main() {
     _main("examples/5.gurt")
 }
 
-
 #[cfg(test)]
 #[test]
-fn test_main(){
+fn test_main() {
     _main("examples/3.gurt")
 }
 
 #[cfg(test)]
 #[test]
 #[should_panic]
-fn test_lex_error(){
+fn test_lex_error() {
     _main("examples/lexerror.gurt")
 }
 
 #[cfg(test)]
 #[test]
 #[should_panic]
-fn test_parse_error(){
+fn test_parse_error() {
     _main("examples/1.gurt")
 }

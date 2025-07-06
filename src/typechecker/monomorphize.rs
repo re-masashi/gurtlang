@@ -97,7 +97,12 @@ impl TypeEnv<'_> {
         let mut processed_nodes = Vec::new();
 
         for node in non_generic_nodes {
-            processed_nodes.push(self.process_node(node, &generic_fns, &mut specialized_fns, &mut specialized_structs));
+            processed_nodes.push(self.process_node(
+                node,
+                &generic_fns,
+                &mut specialized_fns,
+                &mut specialized_structs,
+            ));
         }
 
         // Third pass: add specialized functions to the beginning of the AST
@@ -120,13 +125,15 @@ impl TypeEnv<'_> {
         specialized_structs: &mut HashMap<String, (TypedStruct, Range<usize>)>,
     ) -> TypedASTNode {
         match node {
-            TypedASTNode::Expr((expr, span)) => {
-                TypedASTNode::Expr((self.process_expr(expr, generic_fns, specialized_fns, specialized_structs), span))
-            }
+            TypedASTNode::Expr((expr, span)) => TypedASTNode::Expr((
+                self.process_expr(expr, generic_fns, specialized_fns, specialized_structs),
+                span,
+            )),
             TypedASTNode::Function((func, span)) => {
                 // Process function body for nested generics
                 let (body_expr, body_span) = *func.body;
-                let processed_body = self.process_expr(body_expr, generic_fns, specialized_fns, specialized_structs);
+                let processed_body =
+                    self.process_expr(body_expr, generic_fns, specialized_fns, specialized_structs);
                 TypedASTNode::Function((
                     TypedFunction {
                         body: Box::new((processed_body, body_span)),
@@ -152,10 +159,13 @@ impl TypeEnv<'_> {
     ) -> TypedExpr {
         match expr.kind {
             TypedExprKind::Call { function, args } => {
-                let new_function = self.process_expr(*function, generic_fns, specialized_fns, specialized_structs);
+                let new_function =
+                    self.process_expr(*function, generic_fns, specialized_fns, specialized_structs);
                 let new_args = args
                     .into_iter()
-                    .map(|arg| self.process_expr(arg, generic_fns, specialized_fns, specialized_structs))
+                    .map(|arg| {
+                        self.process_expr(arg, generic_fns, specialized_fns, specialized_structs)
+                    })
                     .collect::<Vec<_>>();
 
                 if let TypedExprKind::Variable(func_name) = &new_function.kind {
@@ -201,7 +211,7 @@ impl TypeEnv<'_> {
                                 &new_args,
                                 expr.range,
                                 specialized_fns,
-                                specialized_structs
+                                specialized_structs,
                             );
                         }
                     }
@@ -249,16 +259,16 @@ impl TypeEnv<'_> {
         let spec_struct = TypedStruct {
             name: spec_name.clone(),
             generics: Vec::new(),
-            fields: struct_ty.fields.iter().enumerate().map(|(i, (name, _))| {
-                (name.clone(), args[i].ty.clone(), 0..0)
-            }).collect(),
+            fields: struct_ty
+                .fields
+                .iter()
+                .enumerate()
+                .map(|(i, (name, _))| (name.clone(), args[i].ty.clone(), 0..0))
+                .collect(),
         };
-        
+
         // Add to specialized structs
-        specialized_structs.insert(
-            spec_struct.name.clone(),
-            (spec_struct, call_range.clone())
-        );
+        specialized_structs.insert(spec_struct.name.clone(), (spec_struct, call_range.clone()));
 
         // Create specialized return type with concrete generics
         let specialized_return = Arc::new(Type::Constructor {

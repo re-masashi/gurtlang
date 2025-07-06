@@ -54,7 +54,7 @@ impl Parser<'_> {
 
             loop {
                 let Some((token, _span_tok)) = self.tokens.peek() else {
-                    panic!("EOR ERROR IN STRUCT GENERICS")
+                    panic!("EOF ERROR IN STRUCT GENERICS")
                 };
                 match token.as_ref().unwrap() {
                     Token::Greater => {
@@ -114,7 +114,21 @@ impl Parser<'_> {
                     // println!("{:?}", self.tokens.next());
                     break;
                 }
-                x => unimplemented!("{:?}", x),
+                x => {
+                    self.errors.push((
+                        ReportKind::Error,
+                        Report::build(ReportKind::Error, (self.file.clone(), span_name.clone()))
+                            .with_code("SyntaxError")
+                            .with_label(
+                                Label::new((self.file.clone(), span_name.clone()))
+                                    .with_message(format!("unexpected token {x:?} in struct."))
+                                    .with_color(ColorGenerator::new().next()),
+                            )
+                            .with_message("unexpected token in struct declaration")
+                            .finish(),
+                    ));
+                    return (ASTNode::Error, span_name.clone());
+                },
             }
         }
 
@@ -298,6 +312,22 @@ impl Parser<'_> {
                 full_span,
             )
         } else {
+            self.errors.push((
+                ReportKind::Error,
+                Report::build(
+                    ReportKind::Error,
+                    (self.file.clone(), start_span.clone()),
+                )
+                .with_code("Syntax Error")
+                .with_label(
+                    Label::new((self.file.clone(), start_span.clone()))
+                        .with_message(
+                            "expected '=' after type alias name",
+                        )
+                        .with_color(ColorGenerator::new().next()),
+                )
+                .finish(),
+            ));
             // Error handling
             (ASTNode::Error, start_span)
         }

@@ -55,7 +55,12 @@ impl TypeEnv<'_> {
             self.expr_to_typed_expr((body, body_span)),
             body_span.clone(),
         );
-        self.unify(typed_body.0.ty.clone(), provisional_return_type.clone(), body_span, body_span);
+        self.unify(
+            typed_body.0.ty.clone(),
+            provisional_return_type.clone(),
+            body_span,
+            body_span,
+        );
 
         self.in_function = was_in_function;
 

@@ -33,6 +33,220 @@ fn parse_str(input: &str) -> (Vec<(ASTNode, Range<usize>)>, Parser) {
 }
 
 #[test]
+fn test_parse_raw_string_basic() {
+    let input = r#""""hello world""""#;
+    let (ast, parser) = parse_str(input);
+    assert!(parser.errors.is_empty());
+    println!("{:?}", ast);
+    assert_eq!(ast.len(), 1);
+    if let (ASTNode::Expr((Expr::String(s), _)), _) = &ast[0] {
+        assert_eq!(s, "hello world");
+    } else {
+        panic!("Expected String expression for raw string");
+    }
+}
+
+#[test]
+fn test_parse_type_alias_missing_assign() {
+    let input = "type MyAlias int"; // Missing '='
+    let (ast, _parser) = parse_str(input);
+    assert!(matches!(&ast[0].0, ASTNode::Error));
+}
+
+#[test]
+fn test_parse_enum_eof_before_end() {
+    let input = "enum MyEnum Variant"; // Missing 'end' keyword
+    let (ast, _parser) = parse_str(input);
+    assert!(matches!(&ast[0].0, ASTNode::Enum(..)));
+}
+
+#[test]
+fn test_parse_enum_invalid_name() {
+    let input = "enum 123 end";
+    let (ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+    assert!(matches!(&ast[0].0, ASTNode::Error));
+}
+
+#[test]
+fn test_parse_struct_field_unimplemented_token() {
+    let input = "struct MyStruct 42"; // Unexpected token (Int) inside struct fields
+    let (_ast, parser) = parse_str(input);
+    assert!(parser.errors.len()==1);
+}
+
+#[test]
+fn test_parse_struct_invalid_name() {
+    let input = "struct 123 end";
+    let (ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+    assert!(matches!(&ast[0].0, ASTNode::Error));
+}
+
+#[test]
+#[should_panic(expected= "STRUCT NEEDS A NAME")]
+fn test_parse_struct_eof_after_keyword() {
+    let input = "struct";
+    let (ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+    assert!(matches!(&ast[0].0, ASTNode::Error));
+}
+
+#[test]
+fn test_parse_program_empty_semicolon() {
+    let input = ";";
+    let (ast, parser) = parse_str(input);
+    assert!(parser.errors.is_empty());
+    assert!(ast.is_empty()); // Empty semicolon should result in no AST nodes
+}
+
+#[test]
+fn test_parse_program_type_alias_declaration() {
+    let input = "type MyAlias = int";
+    let (ast, parser) = parse_str(input);
+    assert!(parser.errors.is_empty());
+    assert_eq!(ast.len(), 1);
+    assert!(matches!(&ast[0].0, ASTNode::TypeAlias(..)));
+}
+
+#[test]
+#[should_panic]
+fn test_parse_program_illegal_token() {
+    let input = "$"; // An illegal token
+    let (_ast, _parser) = parse_str(input);
+}
+
+#[test]
+fn test_parse_type_annotation_trait_invalid_name() {
+    let input = "def my_func(a: trait 42) body 1 end";
+    let (ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+    assert!(matches!(&ast[0].0, ASTNode::Error));
+}
+
+#[test]
+fn test_parse_type_annotation_invalid_token_after_colon() {
+    let input = "def my_func(a: 42)";
+    let (ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+    assert!(matches!(&ast[0].0, ASTNode::Error));
+}
+
+#[test]
+fn test_parse_function_eof_after_name() {
+    let input = "def my_func";
+    let (ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+    assert!(matches!(&ast[0].0, ASTNode::Error));
+}
+
+#[test]
+fn test_parse_function_invalid_name() {
+    let input = "def 123";
+    let (ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+    assert!(matches!(&ast[0].0, ASTNode::Error));
+}
+
+#[test]
+fn test_parse_function_eof_after_def() {
+    let input = "def";
+    let (ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+    assert!(matches!(&ast[0].0, ASTNode::Error));
+}
+
+#[test]
+fn test_function_syntax_string() {
+    let syntax = crate::parser::function::function_syntax();
+    assert!(syntax.contains("The syntax for declaring a function is:"));
+    // assert!(syntax.contains("def function_name(arg1: type1, arg2: type2, ...) -> return_type"));
+}
+
+#[test]
+fn test_parse_type_annotation_multiple_traits() {
+    let input = "def my_func(a: trait MyTrait + AnotherTrait) -> int do 1 end";
+    let (ast, parser) = parse_str(input);
+    assert!(parser.errors.is_empty());
+    println!("{:?}", parser.errors);
+    assert_eq!(ast.len(), 1);
+    if let (ASTNode::Function(func), _) = &ast[0] {
+        if let Some(TypeAnnot::Trait(traits)) = &func.args[0].1 {
+            assert_eq!(traits, &vec!["MyTrait".to_string(), "AnotherTrait".to_string()]);
+        } else {
+            panic!("Expected Trait annotation");
+        }
+    } else {
+        panic!("Expected Function AST node");
+    }
+}
+
+#[test]
+fn test_parse_tuple_invalid_token_after_first_element() {
+    let input = "(1 {";
+    let (ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+    assert!(matches!(&ast[0].0, ASTNode::Expr((Expr::Error, _))));
+}
+
+#[test]
+fn test_parse_tuple_eof_after_first_element() {
+    let input = "(1";
+    let (ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+    assert!(matches!(&ast[0].0, ASTNode::Expr((Expr::Error, _))));
+}
+
+#[test]
+#[should_panic]
+fn test_parse_enum_variant_invalid_token_after_access() {
+    let input = "MyEnum::42"; // 42 is an Int token, not a Variable
+    let (_ast, _parser) = parse_str(input);
+}
+
+#[test]
+fn test_parse_empty_array() {
+    let input = "[]";
+    let (ast, parser) = parse_str(input);
+    assert!(parser.errors.is_empty());
+    assert_eq!(ast.len(), 1);
+    if let (ASTNode::Expr((Expr::Array { elements }, _)), _) = &ast[0] {
+        assert!(elements.is_empty());
+    } else {
+        panic!("Expected Array expression for empty array");
+    }
+}
+
+#[test]
+fn test_parse_array_missing_comma_or_rbracket() {
+    let input = "[1 2]"; // missing comma
+    let (_ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+}
+
+#[test]
+fn test_parse_array_eof_after_comma() {
+    let input = "[1,";
+    let (ast, parser) = parse_str(input);
+    assert!(!parser.errors.is_empty());
+    assert!(matches!(&ast[0].0, ASTNode::Expr((Expr::Error, _))));
+}
+
+#[test]
+#[should_panic(expected = "EOF ERROR IN STRUCT GENERICS")]
+fn test_parse_struct_generics_eof_after_less() {
+    let input = "struct MyStruct<";
+    let (_ast, _parser) = parse_str(input);
+}
+
+#[test]
+#[should_panic(expected = "EOF ERROR IN STRUCT GENERICS")]
+fn test_parse_struct_generics_eof_after_generic() {
+    let input = "struct MyStruct<T,";
+    let (_ast, _parser) = parse_str(input);
+}
+
+#[test]
 fn test_parse_basic_expressions() {
     let (ast, parser) = parse_str("5 true 3.14 \"hello\"");
     assert!(parser.errors.is_empty());

@@ -35,7 +35,7 @@ pub enum Token {
     })]
     String(String),
 
-    #[regex(r#""""([^"\\]*(\\.[^"\\]*)*)""""#, |lex| {
+    #[regex(r#""""([^(""")\\]*(\\.[^(""")\\]*)*)""""#, |lex| {
         let s = lex.slice();
         let content = &s[3..s.len() - 3]; // Remove the triple quotes
         content

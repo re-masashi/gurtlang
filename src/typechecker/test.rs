@@ -1720,7 +1720,7 @@ fn test_recursive_function() {
             Expr::BinOp {
                 operator: BinOp::Sub,
                 l_value: Box::new((Expr::Variable("val".to_string()), 52..55)), // Range for 'val'
-                r_value: Box::new((Expr::Int(1), 56..57)), // Range for '1'
+                r_value: Box::new((Expr::Int(1), 56..57)),                      // Range for '1'
             },
             52..57, // Range for the 'val - 1' expression
         )],
@@ -1759,16 +1759,19 @@ fn test_recursive_function() {
     // This includes the function definition and the final call to 'fact(4)'
     let fact_program = vec![
         (ASTNode::Function(fact_function), 0..0), // Range for the entire function definition node
-        (ASTNode::Expr((
-            Expr::Call {
-                function: Box::new((Expr::Variable("fact".to_string()), 62..66)), // Range for 'fact' in the top-level call
-                args: vec![(
-                    Expr::Int(4), // Argument for the top-level call
-                    67..68, // Range for the '4' literal
-                )],
-            },
-            62..69, // Range for the 'fact(4)' expression
-        )), 0..0) // Range for the entire expression node
+        (
+            ASTNode::Expr((
+                Expr::Call {
+                    function: Box::new((Expr::Variable("fact".to_string()), 62..66)), // Range for 'fact' in the top-level call
+                    args: vec![(
+                        Expr::Int(4), // Argument for the top-level call
+                        67..68,       // Range for the '4' literal
+                    )],
+                },
+                62..69, // Range for the 'fact(4)' expression
+            )),
+            0..0,
+        ), // Range for the entire expression node
     ];
 
     // Attempt to type-check the AST
@@ -1776,23 +1779,36 @@ fn test_recursive_function() {
     let typed_ast = env.resolve_all(typed_ast);
     let typed_ast = env.monomorphize_ast(typed_ast);
 
-    assert!(!typed_ast.is_empty(), "The typed AST should not be empty after processing.");
+    assert!(
+        !typed_ast.is_empty(),
+        "The typed AST should not be empty after processing."
+    );
 
     if let Some(TypedASTNode::Function((typed_fact_fn, _))) = typed_ast.get(0) {
         assert_eq!(typed_fact_fn.name, "fact", "Function name should be 'fact'");
-        assert_eq!(typed_fact_fn.args.len(), 1, "Fact function should have 1 argument");
+        assert_eq!(
+            typed_fact_fn.args.len(),
+            1,
+            "Fact function should have 1 argument"
+        );
 
         if let Some((arg_name, arg_type, _)) = typed_fact_fn.args.get(0) {
             assert_eq!(arg_name, "val", "Argument name should be 'val'");
             if let Type::Constructor { name, .. } = &**arg_type {
                 assert_eq!(name, "int", "Argument 'val' should be inferred as 'int'");
             } else {
-                panic!("Argument 'val' type is not a constructor type. it is {:?}", arg_type);
+                panic!(
+                    "Argument 'val' type is not a constructor type. it is {:?}",
+                    arg_type
+                );
             }
         }
 
         if let Type::Constructor { name, .. } = &*typed_fact_fn.return_type.0 {
-            assert_eq!(name, "int", "Function return type should be inferred as 'int'");
+            assert_eq!(
+                name, "int",
+                "Function return type should be inferred as 'int'"
+            );
         } else {
             panic!("Function return type is not a constructor type.");
         }

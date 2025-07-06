@@ -2,6 +2,9 @@ use crate::ast::TypedASTNode;
 
 pub mod no_typevars;
 
+#[cfg(test)]
+pub mod test;
+
 pub fn validate_ast(
     ast: Vec<TypedASTNode>,
     file: String,

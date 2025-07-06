@@ -68,7 +68,7 @@ pub fn check_for_type_vars(
     errors
 }
 
-fn check_type(
+pub fn check_type(
     ty: &Arc<Type>,
     span: Range<usize>,
     reported: &mut ReportedSet,
@@ -112,7 +112,10 @@ fn check_type(
     errors
 }
 
-fn check_typed_expr(expr: &TypedExpr, reported: &mut ReportedSet) -> Vec<(Range<usize>, String)> {
+pub fn check_typed_expr(
+    expr: &TypedExpr,
+    reported: &mut ReportedSet,
+) -> Vec<(Range<usize>, String)> {
     let mut errors = Vec::new();
 
     errors.extend(check_type(&expr.ty, expr.range.clone(), reported));
@@ -231,7 +234,7 @@ fn check_typed_expr(expr: &TypedExpr, reported: &mut ReportedSet) -> Vec<(Range<
     errors
 }
 
-fn check_typed_function(
+pub fn check_typed_function(
     func: &TypedFunction,
     reported: &mut ReportedSet,
 ) -> Vec<(Range<usize>, String)> {
@@ -249,7 +252,7 @@ fn check_typed_function(
     errors
 }
 
-fn check_typed_struct(
+pub fn check_typed_struct(
     strct: &TypedStruct,
     reported: &mut ReportedSet,
 ) -> Vec<(Range<usize>, String)> {
@@ -262,7 +265,10 @@ fn check_typed_struct(
     errors
 }
 
-fn check_typed_enum(enm: &TypedEnum, reported: &mut ReportedSet) -> Vec<(Range<usize>, String)> {
+pub fn check_typed_enum(
+    enm: &TypedEnum,
+    reported: &mut ReportedSet,
+) -> Vec<(Range<usize>, String)> {
     let mut errors = Vec::new();
 
     for variant in &enm.variants {
@@ -272,7 +278,7 @@ fn check_typed_enum(enm: &TypedEnum, reported: &mut ReportedSet) -> Vec<(Range<u
     errors
 }
 
-fn check_typed_enum_variant(
+pub fn check_typed_enum_variant(
     variant: &TypedEnumVariant,
     reported: &mut ReportedSet,
 ) -> Vec<(Range<usize>, String)> {

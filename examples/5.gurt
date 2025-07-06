@@ -2,10 +2,11 @@ struct Box<T>
 	val T
 end
 
-def identity(n)
-	n
+# def identity(n)
+#	n
 
-identity(1)
-identity("a")
+# identity(1)
+# identity("a")
 
 Box(1)
+Box("aaaaaaa")

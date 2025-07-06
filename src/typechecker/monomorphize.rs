@@ -75,30 +75,36 @@ impl TypeEnv<'_> {
     pub fn monomorphize_ast(&mut self, ast: Vec<TypedASTNode>) -> Vec<TypedASTNode> {
         // First pass: collect all generic functions
         let mut generic_fns = HashMap::new();
+        let mut generic_structs = HashMap::new();
+
         let mut non_generic_nodes = Vec::new();
 
         for node in ast {
-            if let TypedASTNode::Function((ref func, ref _span)) = node {
-                if func.is_generic() {
-                    if let TypedASTNode::Function((func, span)) = node {
-                        generic_fns.insert(func.name.clone(), (func, span));
-                    }
-                    continue;
+            match node {
+                TypedASTNode::Function((func, ref span)) if func.is_generic() => {
+                    generic_fns.insert(func.name.clone(), (func, span.clone()));
                 }
+                TypedASTNode::Struct((strukt, ref span)) if !strukt.generics.is_empty() => {
+                    generic_structs.insert(strukt.name.clone(), (strukt, span.clone()));
+                }
+                _ => non_generic_nodes.push(node),
             }
-            non_generic_nodes.push(node);
         }
 
         // Second pass: process nodes and specialize functions
         let mut specialized_fns = HashMap::new();
+        let mut specialized_structs = HashMap::new();
         let mut processed_nodes = Vec::new();
 
         for node in non_generic_nodes {
-            processed_nodes.push(self.process_node(node, &generic_fns, &mut specialized_fns));
+            processed_nodes.push(self.process_node(node, &generic_fns, &mut specialized_fns, &mut specialized_structs));
         }
 
         // Third pass: add specialized functions to the beginning of the AST
         let mut result = Vec::new();
+        for (_, (strukt, span)) in specialized_structs {
+            result.push(TypedASTNode::Struct((strukt, span)));
+        }
         for (_, (func, span)) in specialized_fns {
             result.push(TypedASTNode::Function((func, span)));
         }
@@ -111,15 +117,16 @@ impl TypeEnv<'_> {
         node: TypedASTNode,
         generic_fns: &HashMap<String, (TypedFunction, Range<usize>)>,
         specialized_fns: &mut HashMap<String, (TypedFunction, Range<usize>)>,
+        specialized_structs: &mut HashMap<String, (TypedStruct, Range<usize>)>,
     ) -> TypedASTNode {
         match node {
             TypedASTNode::Expr((expr, span)) => {
-                TypedASTNode::Expr((self.process_expr(expr, generic_fns, specialized_fns), span))
+                TypedASTNode::Expr((self.process_expr(expr, generic_fns, specialized_fns, specialized_structs), span))
             }
             TypedASTNode::Function((func, span)) => {
                 // Process function body for nested generics
                 let (body_expr, body_span) = *func.body;
-                let processed_body = self.process_expr(body_expr, generic_fns, specialized_fns);
+                let processed_body = self.process_expr(body_expr, generic_fns, specialized_fns, specialized_structs);
                 TypedASTNode::Function((
                     TypedFunction {
                         body: Box::new((processed_body, body_span)),
@@ -127,6 +134,10 @@ impl TypeEnv<'_> {
                     },
                     span,
                 ))
+            }
+            TypedASTNode::Struct((strukt, span)) => {
+                // For now just pass through non-generic structs
+                TypedASTNode::Struct((strukt, span))
             }
             _ => node,
         }
@@ -137,13 +148,14 @@ impl TypeEnv<'_> {
         expr: TypedExpr,
         generic_fns: &HashMap<String, (TypedFunction, Range<usize>)>,
         specialized_fns: &mut HashMap<String, (TypedFunction, Range<usize>)>,
+        specialized_structs: &mut HashMap<String, (TypedStruct, Range<usize>)>,
     ) -> TypedExpr {
         match expr.kind {
             TypedExprKind::Call { function, args } => {
-                let new_function = self.process_expr(*function, generic_fns, specialized_fns);
+                let new_function = self.process_expr(*function, generic_fns, specialized_fns, specialized_structs);
                 let new_args = args
                     .into_iter()
-                    .map(|arg| self.process_expr(arg, generic_fns, specialized_fns))
+                    .map(|arg| self.process_expr(arg, generic_fns, specialized_fns, specialized_structs))
                     .collect::<Vec<_>>();
 
                 if let TypedExprKind::Variable(func_name) = &new_function.kind {
@@ -189,6 +201,7 @@ impl TypeEnv<'_> {
                                 &new_args,
                                 expr.range,
                                 specialized_fns,
+                                specialized_structs
                             );
                         }
                     }
@@ -216,6 +229,7 @@ impl TypeEnv<'_> {
         args: &[TypedExpr],
         call_range: Range<usize>,
         specialized_fns: &mut HashMap<String, (TypedFunction, Range<usize>)>,
+        specialized_structs: &mut HashMap<String, (TypedStruct, Range<usize>)>, // NEW
     ) -> TypedExpr {
         // Create type mapping from field type variables to argument types
         let mut type_map = HashMap::new();
@@ -225,6 +239,26 @@ impl TypeEnv<'_> {
                 type_map.insert(*id, resolved_arg_ty);
             }
         }
+
+        let type_signature = args
+            .iter()
+            .map(|arg| type_signature_string(&arg.ty))
+            .collect::<Vec<_>>()
+            .join("_");
+        let spec_name = sanitize_identifier(format!("{}_{}", struct_name, type_signature).as_str());
+        let spec_struct = TypedStruct {
+            name: spec_name.clone(),
+            generics: Vec::new(),
+            fields: struct_ty.fields.iter().enumerate().map(|(i, (name, _))| {
+                (name.clone(), args[i].ty.clone(), 0..0)
+            }).collect(),
+        };
+        
+        // Add to specialized structs
+        specialized_structs.insert(
+            spec_struct.name.clone(),
+            (spec_struct, call_range.clone())
+        );
 
         // Create specialized return type with concrete generics
         let specialized_return = Arc::new(Type::Constructor {
@@ -244,7 +278,7 @@ impl TypeEnv<'_> {
         });
 
         // Create the specialized constructor function
-        let spec_name = struct_name.to_string();
+        // let spec_name = struct_name.to_string();
         if !specialized_fns.contains_key(&spec_name) {
             let constructor_func =
                 self.create_constructor_function(struct_ty, &spec_name, &type_map);

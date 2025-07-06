@@ -72,7 +72,7 @@ fn test_parse_enum_invalid_name() {
 fn test_parse_struct_field_unimplemented_token() {
     let input = "struct MyStruct 42"; // Unexpected token (Int) inside struct fields
     let (_ast, parser) = parse_str(input);
-    assert!(parser.errors.len()==1);
+    assert!(parser.errors.len() == 1);
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn test_parse_struct_invalid_name() {
 }
 
 #[test]
-#[should_panic(expected= "STRUCT NEEDS A NAME")]
+#[should_panic(expected = "STRUCT NEEDS A NAME")]
 fn test_parse_struct_eof_after_keyword() {
     let input = "struct";
     let (ast, parser) = parse_str(input);
@@ -172,7 +172,10 @@ fn test_parse_type_annotation_multiple_traits() {
     assert_eq!(ast.len(), 1);
     if let (ASTNode::Function(func), _) = &ast[0] {
         if let Some(TypeAnnot::Trait(traits)) = &func.args[0].1 {
-            assert_eq!(traits, &vec!["MyTrait".to_string(), "AnotherTrait".to_string()]);
+            assert_eq!(
+                traits,
+                &vec!["MyTrait".to_string(), "AnotherTrait".to_string()]
+            );
         } else {
             panic!("Expected Trait annotation");
         }

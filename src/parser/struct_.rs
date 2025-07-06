@@ -128,7 +128,7 @@ impl Parser<'_> {
                             .finish(),
                     ));
                     return (ASTNode::Error, span_name.clone());
-                },
+                }
             }
         }
 
@@ -314,19 +314,14 @@ impl Parser<'_> {
         } else {
             self.errors.push((
                 ReportKind::Error,
-                Report::build(
-                    ReportKind::Error,
-                    (self.file.clone(), start_span.clone()),
-                )
-                .with_code("Syntax Error")
-                .with_label(
-                    Label::new((self.file.clone(), start_span.clone()))
-                        .with_message(
-                            "expected '=' after type alias name",
-                        )
-                        .with_color(ColorGenerator::new().next()),
-                )
-                .finish(),
+                Report::build(ReportKind::Error, (self.file.clone(), start_span.clone()))
+                    .with_code("Syntax Error")
+                    .with_label(
+                        Label::new((self.file.clone(), start_span.clone()))
+                            .with_message("expected '=' after type alias name")
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .finish(),
             ));
             // Error handling
             (ASTNode::Error, start_span)

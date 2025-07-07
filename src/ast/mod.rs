@@ -401,6 +401,7 @@ pub struct TypedFunction {
     pub args: Vec<(String, Arc<Type>, Range<usize>)>,
     pub body: Box<(TypedExpr, Range<usize>)>,
     pub return_type: (Arc<Type>, Range<usize>),
+    pub is_constructor: bool,
 }
 
 #[derive(Debug)]

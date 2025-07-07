@@ -1,0 +1,5 @@
+def identity(n)
+	n
+
+identity(1)
+identity("a")

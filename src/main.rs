@@ -4,6 +4,7 @@ use ariadne::Report;
 use ariadne::ReportKind;
 use ariadne::Source;
 
+use gurtlang::ir::IRGenerator;
 use gurtlang::lexer::Token;
 use gurtlang::parser::Parser;
 use gurtlang::typechecker::TypeEnv;
@@ -59,9 +60,9 @@ fn _main(path: &str) {
     let resolved_ast = type_env.resolve_all(typed_ast);
     let mono_ast = type_env.monomorphize_ast(resolved_ast);
 
-    println!("{:#?}", mono_ast);
+    // println!("{:#?}", mono_ast);
 
-    let validation_errors = validation::validate_ast(mono_ast, filepath.clone());
+    let validation_errors = validation::validate_ast(&mono_ast, filepath.clone());
     for (_, span, _error) in validation_errors {
         let error: Report<'_, (String, Range<usize>)> =
             Report::build(ReportKind::Error, (filepath.clone(), span.clone()))
@@ -82,18 +83,24 @@ fn _main(path: &str) {
         error.print((filepath.clone(), source.clone())).unwrap();
     }
 
+    let mut ir_generator = IRGenerator::new();
+    ir_generator.generate(mono_ast); // Generate IR from the monomorphized AST
+    let ir_module = ir_generator.build(); // Finalize the module
+
+    println!("{}", ir_module);
+
     println!("Me: Yogurt");
     println!("Gurt: Yo");
 }
 
 fn main() {
-    _main("examples/5.gurt")
+    _main("examples/3.gurt")
 }
 
 #[cfg(test)]
 #[test]
 fn test_main() {
-    _main("examples/3.gurt")
+    _main("examples/5.gurt")
 }
 
 #[cfg(test)]

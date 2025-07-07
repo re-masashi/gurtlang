@@ -1865,6 +1865,7 @@ fn test_monomorphization() {
             },
             15..16,
         )),
+        is_constructor: false,
         return_type: (tvar!(1), 15..16),
     };
 

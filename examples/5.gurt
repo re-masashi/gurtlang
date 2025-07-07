@@ -2,11 +2,13 @@ struct Box<T>
 	val T
 end
 
-# def identity(n)
-#	n
-
-# identity(1)
-# identity("a")
-
 Box(1)
-Box("aaaaaaa")
+Box(0.2)
+
+struct Point
+	x float
+	y float
+	z float
+end
+
+Point(0, 0, 0)

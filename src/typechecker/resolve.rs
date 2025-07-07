@@ -400,6 +400,7 @@ impl TypeEnv<'_> {
                 .collect(),
             body: Box::new((self.resolve_expr(func.body.0), func.body.1)),
             return_type: (self.resolve(func.return_type.0), func.return_type.1),
+            is_constructor: func.is_constructor,
         }
     }
 

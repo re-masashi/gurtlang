@@ -346,7 +346,7 @@ impl TypeEnv<'_> {
         });
 
         let dummy_body = TypedExpr {
-            kind: TypedExprKind::Error,
+            kind: TypedExprKind::Int(0),
             ty: specialized_return.clone(),
             range: 0..0,
         };
@@ -356,6 +356,7 @@ impl TypeEnv<'_> {
             args: specialized_fields,
             body: Box::new((dummy_body, 0..0)),
             return_type: (specialized_return, 0..0),
+            is_constructor: true,
         }
     }
 
@@ -397,7 +398,7 @@ impl TypeEnv<'_> {
             .map(|(_, ty, _)| type_signature_string(ty))
             .collect();
 
-        println!("{:?}", specialized.args);
+        // println!("{:?}", specialized.args);
 
         let return_str = type_signature_string(&return_type);
         let signature = format!("{}_{}_to_{}", func.name, arg_types.join("_"), return_str);

@@ -6,8 +6,8 @@ pub mod no_typevars;
 pub mod test;
 
 pub fn validate_ast(
-    ast: Vec<TypedASTNode>,
+    ast: &Vec<TypedASTNode>,
     file: String,
 ) -> Vec<(String, std::ops::Range<usize>, String)> {
-    no_typevars::check_for_type_vars(&ast, &file)
+    no_typevars::check_for_type_vars(ast, &file)
 }

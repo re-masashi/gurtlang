@@ -81,6 +81,7 @@ impl TypeEnv<'_> {
                 body: Box::new(typed_body),
                 name: name.to_string(),
                 return_type: typed_return_type,
+                is_constructor: false,
             },
             fun_span.clone(),
         )

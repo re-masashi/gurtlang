@@ -536,6 +536,7 @@ fn test_check_typed_function() {
         ],
         body: Box::new((typed_expr(TypedExprKind::Int(1), type_var(31)), r())), // Body with type var
         return_type: (type_var(32), r()), // Return type with type var
+        is_constructor: false,
     };
     let errors = check_typed_function(&func, &mut reported);
     assert_eq!(errors.len(), 3); // For type_var(30), (31), (32)
@@ -631,6 +632,7 @@ fn test_check_for_type_vars_comprehensive() {
             r(),
         )),
         return_type: (type_var(100), r()),
+        is_constructor: false,
     };
 
     // Create an expression with an unresolved type variable

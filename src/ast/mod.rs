@@ -6,6 +6,7 @@ use std::vec::Vec;
 pub enum ASTNode {
     Expr((Expr, Range<usize>)),
     Function(Function),
+    Extern(Extern),
     Struct(Struct),
     Enum(Enum, Range<usize>),
     TypeAlias(TypeAlias, Range<usize>),
@@ -149,6 +150,13 @@ pub struct Function {
     pub args: Vec<(String, Option<TypeAnnot>, Range<usize>)>,
     pub body: Box<(Expr, Range<usize>)>,
     pub return_type: Option<(TypeAnnot, Range<usize>)>,
+}
+
+#[derive(Debug)]
+pub struct Extern {
+    pub name: String,
+    pub args: Vec<(TypeAnnot, Range<usize>)>,
+    pub return_type: (TypeAnnot, Range<usize>),
 }
 
 #[derive(Debug)]
@@ -389,6 +397,7 @@ pub struct TypedTypeAlias {
 pub enum TypedASTNode {
     Expr((TypedExpr, Range<usize>)),
     Function((TypedFunction, Range<usize>)),
+    Extern((TypedExtern, Range<usize>)),
     Struct((TypedStruct, Range<usize>)),
     Enum((TypedEnum, Range<usize>)),
     // type aliases are omitted here
@@ -402,6 +411,13 @@ pub struct TypedFunction {
     pub body: Box<(TypedExpr, Range<usize>)>,
     pub return_type: (Arc<Type>, Range<usize>),
     pub is_constructor: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedExtern {
+    pub name: String,
+    pub args: Vec<(Arc<Type>, Range<usize>)>,
+    pub return_type: (Arc<Type>, Range<usize>),
 }
 
 #[derive(Debug)]

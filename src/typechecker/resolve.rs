@@ -105,6 +105,7 @@ impl TypeEnv<'_> {
                 TypedASTNode::Enum((self.resolve_enum(enum_), span))
             }
             TypedASTNode::Error => TypedASTNode::Error,
+            TypedASTNode::Extern(_) => node,
         }
     }
 

@@ -1,5 +1,5 @@
 use super::*;
-use crate::ast::{AssignOp, BinOp, Expr, Function, Struct, TypeAnnot, UnOp};
+use crate::ast::{AssignOp, BinOp, Expr, Extern, Function, Struct, TypeAnnot, UnOp};
 use logos::Logos;
 
 // Helper function to parse input without file I/O
@@ -37,7 +37,7 @@ fn test_parse_raw_string_basic() {
     let input = r#""""hello world""""#;
     let (ast, parser) = parse_str(input);
     assert!(parser.errors.is_empty());
-    println!("{:?}", ast);
+    // println!("{:?}", ast);
     assert_eq!(ast.len(), 1);
     if let (ASTNode::Expr((Expr::String(s), _)), _) = &ast[0] {
         assert_eq!(s, "hello world");
@@ -168,7 +168,7 @@ fn test_parse_type_annotation_multiple_traits() {
     let input = "def my_func(a: trait MyTrait + AnotherTrait) -> int do 1 end";
     let (ast, parser) = parse_str(input);
     assert!(parser.errors.is_empty());
-    println!("{:?}", parser.errors);
+    // println!("{:?}", parser.errors);
     assert_eq!(ast.len(), 1);
     if let (ASTNode::Function(func), _) = &ast[0] {
         if let Some(TypeAnnot::Trait(traits)) = &func.args[0].1 {
@@ -563,6 +563,26 @@ fn test_parse_function() {
 }
 
 #[test]
+fn test_parse_extern() {
+    let (ast, parser) = parse_str("extern puts(string) -> int");
+    println!("{:?}", parser.errors);
+    assert!(parser.errors.is_empty());
+
+    if let ASTNode::Extern(Extern {
+        name,
+        args,
+        return_type,
+        ..
+    }) = &ast[0].0
+    {
+        assert_eq!(name, "puts");
+        assert_eq!(args.len(), 1);
+        if let TypeAnnot::Int = args[0].0 {}
+        if let (TypeAnnot::Int, _) = return_type {}
+    }
+}
+
+#[test]
 fn test_parse_generic_struct() {
     let (ast, parser) = parse_str(
         "
@@ -694,9 +714,9 @@ fn test_strings() {
     """helloworl1"""
     "helloworld";
     "#;
-    println!("34th {}", input.chars().nth(34).unwrap());
+    // println!("34th {}", input.chars().nth(34).unwrap());
 
-    println!("35th {}", input.chars().nth(35).unwrap());
+    // println!("35th {}", input.chars().nth(35).unwrap());
     let (ast, parser) = parse_str(input);
     assert!(parser.errors.is_empty());
     assert_eq!(ast.len(), 2);

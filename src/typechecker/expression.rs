@@ -36,6 +36,7 @@ impl TypeEnv<'_> {
                 let (typed_fun, span) = self.function_to_typed_function((&func, span));
                 TypedASTNode::Function((typed_fun, span))
             }
+            ASTNode::Extern(_) => todo!(),
             ASTNode::Struct(struct_) => {
                 let dummy_span = 0..0; // Dummy span since structs don't have spans
                 let (typed_struct, span) = self.struct_to_typed_struct((&struct_, &dummy_span));

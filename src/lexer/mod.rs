@@ -145,6 +145,9 @@ pub enum Token {
     #[token("def")]
     KeywordDef,
 
+    #[token("extern")]
+    KeywordExtern,
+
     #[token("fn")]
     KeywordFn,
 

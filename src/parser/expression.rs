@@ -943,7 +943,7 @@ impl Parser<'_> {
                     continue;
                 }
                 _ => {
-                    let arg = match self.parse_function_arg(span.clone()) {
+                    let arg = match self.parse_function_arg(span.clone(), false) {
                         Ok(arg) => arg,
                         Err(e) => {
                             self.errors.push(*e);

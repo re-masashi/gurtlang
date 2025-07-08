@@ -29,3 +29,8 @@ Day 44
 Added enums
 Added match
 Added match and enum typechecking
+
+Day 57
+Added validation
+Added monomorphization for functions and structs
+Added an IR

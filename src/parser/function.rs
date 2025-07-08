@@ -1,6 +1,6 @@
 use yansi::Paint;
 
-use crate::ast::{ASTNode, Function, TypeAnnot};
+use crate::ast::{ASTNode, Extern, Function, TypeAnnot};
 use crate::lexer::Token;
 use crate::parser::Parser;
 
@@ -170,7 +170,7 @@ impl<'a> Parser<'a> {
                     continue;
                 }
                 _ => {
-                    let arg = match self.parse_function_arg(span.clone()) {
+                    let arg = match self.parse_function_arg(span.clone(), false) {
                         Ok(arg) => arg,
                         Err(e) => {
                             self.errors.push(*e);
@@ -228,28 +228,215 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn parse_extern(&mut self) -> (ASTNode, Range<usize>) {
+        let Some((_token, span_function)) = self.tokens.next() else {
+            unreachable!() // never happens
+        };
+
+        let Some((token, span_name)) = self.tokens.next() else {
+            self.errors.push((
+                ReportKind::Error,
+                Report::build(
+                    ReportKind::Error,
+                    (self.file.clone(), span_function.clone()),
+                )
+                .with_code("EOF")
+                .with_label(
+                    Label::new((self.file.clone(), span_function.clone()))
+                        .with_message(format!(
+                            "expected externa function name after '{}' but reached end of file",
+                            Fmt::fg("extern", Color::Yellow).bold(),
+                        ))
+                        .with_color(ColorGenerator::new().next()),
+                )
+                .with_note(function_syntax())
+                .with_message(
+                    "reached end of file while trying to parse an external function definition.",
+                )
+                .finish(),
+            ));
+            return (ASTNode::Error, span_function);
+        };
+
+        let token = token.unwrap();
+
+        let fun_name = if let Token::Variable(fun_name) = token {
+            fun_name
+        } else {
+            self.errors.push((
+                ReportKind::Error,
+                Report::build(ReportKind::Error, (self.file.clone(), span_name.clone()))
+                    .with_code("EOF")
+                    .with_label(
+                        Label::new((self.file.clone(), span_name.clone()))
+                            .with_message(format!(
+                                "expected externa function name after '{}'. got {} instead",
+                                Fmt::fg("extern", Color::Yellow).bold(),
+                                Fmt::fg(format!("{:?}", token), Color::BrightRed).bold(),
+                            ))
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_note(function_syntax())
+                    .with_message(
+                        "found unexpected token after 'extern'. expected a valid identifier.",
+                    )
+                    .finish(),
+            ));
+            return (ASTNode::Error, span_name);
+        };
+
+        let Some((token, _span_starting_paren)) = self.tokens.next() else {
+            self.errors.push((
+                ReportKind::Error,
+                Report::build(
+                    ReportKind::Error,
+                    (self.file.clone(), span_function.clone()),
+                )
+                .with_code("EOF")
+                .with_label(
+                    Label::new((self.file.clone(), span_function.clone()))
+                        .with_message(
+                            "expected '(' name after external function name but reached end of file"
+                                .to_string(),
+                        )
+                        .with_color(ColorGenerator::new().next()),
+                )
+                .with_note(function_syntax())
+                .with_message("reached end of file while trying to parse an external function definition.")
+                .finish(),
+            ));
+            return (ASTNode::Error, span_function);
+        };
+
+        let token = token.unwrap();
+
+        // println!("{:?}", self.tokens.peek());
+
+        if let Token::LParen = token {
+            // do nothing
+        } else {
+            self.errors.push((
+                ReportKind::Error,
+                Report::build(
+                    ReportKind::Error,
+                    (self.file.clone(), span_function.clone()),
+                )
+                .with_code("EOF")
+                .with_label(
+                    Label::new((self.file.clone(), span_function.clone()))
+                        .with_message(format!(
+                            "expected '{}' after external function name. got {} instead",
+                            Fmt::fg('(', Color::BrightRed).bold(),
+                            Fmt::fg(format!("{:?}", token), Color::BrightRed).bold(),
+                        ))
+                        .with_color(ColorGenerator::new().next()),
+                )
+                .with_note(function_syntax())
+                .with_message(format!(
+                    "found unexpected token after the name of external function `{}`.",
+                    Fmt::fg(fun_name, Color::Blue).bold(),
+                ))
+                .finish(),
+            ));
+            return (ASTNode::Error, span_name);
+        };
+
+        let mut args = vec![];
+
+        loop {
+            let Some((token, span)) = self.tokens.peek() else {
+                self.errors.push((
+                    ReportKind::Error,
+                    Report::build(
+                        ReportKind::Error,
+                        (self.file.clone(), span_function.clone()),
+                    )
+                    .with_code("EOF")
+                    .with_label(
+                        Label::new((self.file.clone(), span_function.clone()))
+                            .with_message("unexpected EOF")
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_message("unexpected eof while parsing function")
+                    .finish(),
+                ));
+                return (ASTNode::Error, span_function.clone());
+            };
+            let span = span.clone();
+            match token.as_ref().unwrap() {
+                Token::RParen => {
+                    self.tokens.next();
+                    break;
+                }
+                Token::Comma => {
+                    self.tokens.next();
+                    continue;
+                }
+                _ => {
+                    let arg = match self.parse_type_annotation(span.clone()) {
+                        Ok(arg) => (arg, span),
+                        Err(e) => {
+                            self.errors.push(*e);
+                            return (ASTNode::Error, span);
+                        }
+                    };
+                    args.push(arg);
+                }
+            }
+        }
+
+        let Some((token, _span)) = self.tokens.peek() else {
+            panic!("RETURN TYPE NEEDED FOR EXTERN");
+        };
+
+        match token.as_ref().unwrap() {
+            Token::Arrow => {
+                let Some((_, span)) = self.tokens.next() else {
+                    unreachable!()
+                };
+                let return_type = match self.parse_type_annotation(span.clone()) {
+                    Ok(result) => result,
+                    Err(e) => {
+                        self.errors.push(*e);
+                        return (ASTNode::Error, span.clone());
+                    }
+                };
+                (
+                    ASTNode::Extern(Extern {
+                        name: fun_name,
+                        args,
+                        return_type: (return_type, span),
+                    }),
+                    span_name,
+                )
+            }
+            _ => panic!("return type needed"),
+        }
+    }
+
     pub fn parse_function_arg(
         &mut self,
         _span: Range<usize>,
+        needs_annot: bool,
     ) -> Result<Arg, Box<(ReportKind<'a>, Report<'a, ErrReport>)>> {
         let Some((token, span)) = self.tokens.next() else {
             return Err(Box::new(
                 (
-                                ReportKind::Error,
-                                Report::build(
-                                    ReportKind::Error,
-                                    (self.file.clone(), _span.clone()),
-                                )
-                                .with_code("EOF")
-                                .with_label(
-                                    Label::new((self.file.clone(), _span))
-                                        .with_message("expected a valid identifier as argument name but reached end of file".to_string())
-                                        .with_color(ColorGenerator::new().next()),
-                                )
-                                .with_note(function_syntax())
-                                .with_message("reached end of file while trying to parse a function definition.")
-                                .finish(),
-                            )
+                    ReportKind::Error,
+                    Report::build(
+                        ReportKind::Error,
+                        (self.file.clone(), _span.clone()),
+                    )
+                    .with_code("EOF")
+                    .with_label(
+                        Label::new((self.file.clone(), _span))
+                            .with_message("expected a valid identifier as argument name but reached end of file".to_string())
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_note(function_syntax())
+                    .with_message("reached end of file while trying to parse a function definition.")
+                        .finish(),
+                    )
             ));
         };
 
@@ -288,11 +475,26 @@ impl<'a> Parser<'a> {
             let type_annot = self.parse_type_annotation(span.clone())?;
 
             Ok((arg_name.to_string(), Some(type_annot), span))
+        } else if needs_annot {
+            return Err(Box::new((
+                ReportKind::Error,
+                Report::build(ReportKind::Error, (self.file.clone(), span.clone()))
+                    .with_code("Syntax Error")
+                    .with_label(
+                        Label::new((self.file.clone(), span))
+                            .with_message(format!(
+                                "expected a valid type annotation after argument name but got {} instead",
+                                Fmt::fg(format!("{:?}", token), Color::BrightRed).bold(),
+                            ))
+                            .with_color(ColorGenerator::new().next()),
+                    )
+                    .with_note(function_syntax())
+                    .with_message("found unexpected token. expected a valid identifier.")
+                    .finish(),
+            )));
         } else {
             Ok((arg_name.to_string(), None, span))
         }
-
-        // panic!("FUNCTION ARGS PARSING YET TO BE DONE")
     }
 
     pub fn parse_type_annotation(

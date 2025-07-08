@@ -62,6 +62,9 @@ pub fn check_for_type_vars(
                     "Error node found in AST".to_string(),
                 ));
             }
+            TypedASTNode::Extern(_) => {
+                // no typevars occur here anyways
+            }
         }
     }
 

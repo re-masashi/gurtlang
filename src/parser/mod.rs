@@ -59,6 +59,7 @@ impl<'a> Parser<'a> {
             match token.as_ref().unwrap() {
                 Token::KeywordStruct => tree.push(self.parse_struct()),
                 Token::KeywordDef => tree.push(self.parse_function()),
+                Token::KeywordExtern => tree.push(self.parse_extern()),
                 Token::KeywordEnum => tree.push(self.parse_enum()),
                 Token::KeywordType => tree.push(self.parse_type_alias()),
                 Token::Semicolon => {

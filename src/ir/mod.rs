@@ -717,6 +717,7 @@ impl IRGenerator {
                 TypedASTNode::Error => {
                     // Ignore errors that made it this far
                 }
+                TypedASTNode::Extern(_) => todo!(),
             }
         }
     }

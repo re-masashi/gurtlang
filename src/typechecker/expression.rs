@@ -33,18 +33,16 @@ impl TypeEnv<'_> {
                 TypedASTNode::Expr((typed_expr, span))
             }
             ASTNode::Function(func) => {
-                let (typed_fun, span) = self.function_to_typed_function((&func, span));
-                TypedASTNode::Function((typed_fun, span))
+                TypedASTNode::Function(self.function_to_typed_function((&func, span)))
             }
-            ASTNode::Extern(_) => todo!(),
+            ASTNode::Extern(func) => {
+                TypedASTNode::Extern(self.extern_to_typed_extern((&func, span)))
+            }
             ASTNode::Struct(struct_) => {
-                let dummy_span = 0..0; // Dummy span since structs don't have spans
-                let (typed_struct, span) = self.struct_to_typed_struct((&struct_, &dummy_span));
-                TypedASTNode::Struct((typed_struct, span))
+                TypedASTNode::Struct(self.struct_to_typed_struct((&struct_, span)))
             }
             ASTNode::Enum(enum_, range) => {
-                let (typed_enum, span) = self.enum_to_typed_enum((&enum_, &range));
-                TypedASTNode::Enum((typed_enum, span))
+                TypedASTNode::Enum(self.enum_to_typed_enum((&enum_, &range)))
             }
             ASTNode::TypeAlias(_, _) => todo!(),
             ASTNode::Impl(_) => todo!(),
@@ -144,7 +142,13 @@ impl TypeEnv<'_> {
                         generics[0].clone(),
                     ),
                     // Type::Constructor { name, .. } if name == "string" => {
-                    //     (t_string!())
+                    //     (
+                    //         TypedExprKind::Index {
+                    //             array: Box::new(typed_array),
+                    //             index: Box::new(typed_index),
+                    //         },
+                    //         t_string!()
+                    //     )
                     // }
                     x => todo!("bs. who would even index sumn that's not an array. {:?}", x),
                 }
@@ -1016,6 +1020,299 @@ impl TypeEnv<'_> {
                     Box::new((typed_pattern, pattern.1.clone())),
                     (expr, span.clone()),
                 )
+            }
+        }
+    }
+
+    pub fn builtin_macro_evaluation(&mut self, expr: TypedExpr) -> TypedExpr {
+        // First recursively process all subexpressions
+        let processed_expr = match expr.kind {
+            TypedExprKind::Return(expr) => {
+                TypedExprKind::Return(Box::new(self.builtin_macro_evaluation(*expr)))
+            }
+            TypedExprKind::Lambda { args, expression } => TypedExprKind::Lambda {
+                args,
+                expression: Box::new(self.builtin_macro_evaluation(*expression)),
+            },
+            TypedExprKind::Array { elements } => TypedExprKind::Array {
+                elements: elements
+                    .into_iter()
+                    .map(|e| self.builtin_macro_evaluation(e))
+                    .collect(),
+            },
+            TypedExprKind::Index { array, index } => TypedExprKind::Index {
+                array: Box::new(self.builtin_macro_evaluation(*array)),
+                index: Box::new(self.builtin_macro_evaluation(*index)),
+            },
+            TypedExprKind::Call { function, args } => {
+                let func = self.builtin_macro_evaluation(*function);
+                let args = args
+                    .into_iter()
+                    .map(|a| self.builtin_macro_evaluation(a))
+                    .collect::<Vec<_>>();
+
+                // Now check if this is a macro call
+                if let TypedExprKind::Variable(name) = &func.kind {
+                    match name.as_str() {
+                        "whattype" => {
+                            if args.len() != 1 {
+                                return TypedExpr {
+                                    kind: TypedExprKind::Call {
+                                        function: Box::new(func),
+                                        args,
+                                    },
+                                    ty: expr.ty,
+                                    range: expr.range,
+                                };
+                            }
+                            let type_str = type_string(&args[0].ty);
+                            return TypedExpr {
+                                kind: TypedExprKind::String(type_str),
+                                ty: t_string!(),
+                                range: expr.range,
+                            };
+                        }
+                        "print" | "println" => {
+                            // If no arguments, handle special cases
+                            if args.is_empty() {
+                                let content = if name == "println" { "\n" } else { "" };
+                                return TypedExpr {
+                                    kind: TypedExprKind::String(content.to_string()),
+                                    ty: t_string!(),
+                                    range: expr.range,
+                                };
+                            }
+
+                            // Convert all arguments to string representations
+                            let string_args = args
+                                .into_iter()
+                                .map(|arg| self.value_to_string(arg))
+                                .collect::<Vec<_>>();
+
+                            // Join all strings with space separator
+                            let mut joined = if let Some(first) = string_args.first() {
+                                first.clone()
+                            } else {
+                                let range = expr.range.clone();
+                                TypedExpr {
+                                    kind: TypedExprKind::String("".to_string()),
+                                    ty: t_string!(),
+                                    range,
+                                }
+                            };
+
+                            for arg in string_args.iter().skip(1) {
+                                let range = expr.range.clone();
+
+                                joined = TypedExpr {
+                                    kind: TypedExprKind::BinOp {
+                                        operator: BinOp::Add,
+                                        l_value: Box::new(joined),
+                                        r_value: Box::new(TypedExpr {
+                                            kind: TypedExprKind::String(" ".to_string()),
+                                            ty: t_string!(),
+                                            range: range.clone(),
+                                        }),
+                                    },
+                                    ty: t_string!(),
+                                    range: range.clone(),
+                                };
+                                joined = TypedExpr {
+                                    kind: TypedExprKind::BinOp {
+                                        operator: BinOp::Add,
+                                        l_value: Box::new(joined),
+                                        r_value: Box::new(arg.clone()),
+                                    },
+                                    ty: t_string!(),
+                                    range,
+                                };
+                            }
+
+                            // Add newline for println
+                            if name == "println" {
+                                let range = expr.range.clone();
+
+                                joined = TypedExpr {
+                                    kind: TypedExprKind::BinOp {
+                                        operator: BinOp::Add,
+                                        l_value: Box::new(joined),
+                                        r_value: Box::new(TypedExpr {
+                                            kind: TypedExprKind::String("\n".to_string()),
+                                            ty: t_string!(),
+                                            range: range.clone(),
+                                        }),
+                                    },
+                                    ty: t_string!(),
+                                    range,
+                                };
+                            }
+
+                            // Create the actual print call
+                            return TypedExpr {
+                                kind: TypedExprKind::Call {
+                                    function: Box::new(TypedExpr {
+                                        kind: TypedExprKind::Variable("print_internal".to_string()),
+                                        ty: Type::Function {
+                                            params: vec![t_string!()],
+                                            return_type: t_unit!(),
+                                        }
+                                        .into(),
+                                        range: func.range,
+                                    }),
+                                    args: vec![joined],
+                                },
+                                ty: t_unit!(),
+                                range: expr.range,
+                            };
+                        }
+                        _ => {}
+                    }
+                }
+
+                TypedExprKind::Call {
+                    function: Box::new(func),
+                    args,
+                }
+            }
+            TypedExprKind::StructAccess {
+                struct_val,
+                field_name,
+            } => TypedExprKind::StructAccess {
+                struct_val: Box::new(self.builtin_macro_evaluation(*struct_val)),
+                field_name,
+            },
+            TypedExprKind::MethodCall {
+                struct_val,
+                method_name,
+                args,
+            } => TypedExprKind::MethodCall {
+                struct_val: Box::new(self.builtin_macro_evaluation(*struct_val)),
+                method_name,
+                args: args
+                    .into_iter()
+                    .map(|a| self.builtin_macro_evaluation(a))
+                    .collect(),
+            },
+            TypedExprKind::BinOp {
+                operator,
+                l_value,
+                r_value,
+            } => TypedExprKind::BinOp {
+                operator,
+                l_value: Box::new(self.builtin_macro_evaluation(*l_value)),
+                r_value: Box::new(self.builtin_macro_evaluation(*r_value)),
+            },
+            TypedExprKind::Assign {
+                l_value,
+                r_value,
+                assign_op,
+            } => TypedExprKind::Assign {
+                l_value: Box::new(self.builtin_macro_evaluation(*l_value)),
+                r_value: Box::new(self.builtin_macro_evaluation(*r_value)),
+                assign_op,
+            },
+            TypedExprKind::UnOp { unop, expression } => TypedExprKind::UnOp {
+                unop,
+                expression: Box::new(self.builtin_macro_evaluation(*expression)),
+            },
+            TypedExprKind::Do { expressions } => TypedExprKind::Do {
+                expressions: expressions
+                    .into_iter()
+                    .map(|e| self.builtin_macro_evaluation(e))
+                    .collect(),
+            },
+            TypedExprKind::Let { var, value } => TypedExprKind::Let {
+                var,
+                value: Box::new(self.builtin_macro_evaluation(*value)),
+            },
+            TypedExprKind::IfElse {
+                condition,
+                if_branch,
+                else_branch,
+            } => TypedExprKind::IfElse {
+                condition: Box::new(self.builtin_macro_evaluation(*condition)),
+                if_branch: Box::new(self.builtin_macro_evaluation(*if_branch)),
+                else_branch: else_branch.map(|b| Box::new(self.builtin_macro_evaluation(*b))),
+            },
+            TypedExprKind::Tuple(elements) => TypedExprKind::Tuple(
+                elements
+                    .into_iter()
+                    .map(|e| self.builtin_macro_evaluation(e))
+                    .collect(),
+            ),
+            TypedExprKind::EnumVariant {
+                enum_name,
+                variant_name,
+                fields,
+            } => TypedExprKind::EnumVariant {
+                enum_name,
+                variant_name,
+                fields: fields
+                    .into_iter()
+                    .map(|(name, expr)| (name, self.builtin_macro_evaluation(expr)))
+                    .collect(),
+            },
+            TypedExprKind::Match { expr, arms } => TypedExprKind::Match {
+                expr: Box::new(self.builtin_macro_evaluation(*expr)),
+                arms: arms
+                    .into_iter()
+                    .map(|arm| TypedMatchArm {
+                        pattern: arm.pattern,
+                        body: Box::new(self.builtin_macro_evaluation(*arm.body)),
+                    })
+                    .collect(),
+            },
+            // For simple expressions that don't have subexpressions
+            TypedExprKind::Bool(_)
+            | TypedExprKind::Int(_)
+            | TypedExprKind::Float(_)
+            | TypedExprKind::String(_)
+            | TypedExprKind::Variable(_)
+            | TypedExprKind::Error => expr.kind,
+        };
+
+        TypedExpr {
+            kind: processed_expr,
+            ty: expr.ty,
+            range: expr.range,
+        }
+    }
+
+    fn value_to_string(&self, expr: TypedExpr) -> TypedExpr {
+        match expr.ty.as_ref() {
+            Type::Constructor { name, .. } if name == "string" => expr,
+            Type::Constructor { name, .. } => {
+                // For primitive types, call to_string method
+                if ["int", "float", "bool", "char"].contains(&name.as_str()) {
+                    let range = expr.range.clone();
+                    TypedExpr {
+                        kind: TypedExprKind::MethodCall {
+                            struct_val: Box::new(expr),
+                            method_name: "to_string".to_string(),
+                            args: vec![],
+                        },
+                        ty: t_string!(),
+                        range,
+                    }
+                }
+                // For structs and enums, show type name
+                else {
+                    let type_str = format!("<{}>", name);
+                    TypedExpr {
+                        kind: TypedExprKind::String(type_str),
+                        ty: t_string!(),
+                        range: expr.range,
+                    }
+                }
+            }
+            // Handle other types (tuples, functions, etc.)
+            _ => {
+                let type_str = type_string(&expr.ty);
+                TypedExpr {
+                    kind: TypedExprKind::String(format!("<{}>", type_str)),
+                    ty: t_string!(),
+                    range: expr.range,
+                }
             }
         }
     }

@@ -117,8 +117,11 @@ impl Parser<'_> {
                     Token::Comma => {
                         let mut exprs = vec![expr];
                         loop {
-                            match self.tokens.next().unwrap().0.unwrap() {
-                                Token::RParen => break,
+                            match self.tokens.peek().unwrap().0.clone().unwrap() {
+                                Token::RParen => {
+                                    self.tokens.next();
+                                    break;
+                                }
                                 _ => {
                                     exprs.push(self.parse_expression());
                                     match self.tokens.peek().unwrap().0.as_ref().unwrap() {

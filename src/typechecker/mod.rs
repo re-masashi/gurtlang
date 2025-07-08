@@ -17,7 +17,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::ast::{EnumVariantKind, Type, TypeAnnot};
-use crate::tvar;
+use crate::{t_bool, t_float, t_int, t_ptr, t_string, t_unit, tvar};
 
 type Error<'a> = (ReportKind<'a>, Report<'a, (String, Range<usize>)>);
 
@@ -75,6 +75,65 @@ impl TypeEnv<'_> {
             in_function: false,
             return_depth: 0,
             file,
+        }
+    }
+
+    pub fn add_builtins(&mut self) {
+        // let primitives = vec![
+        //     ("int", Type::Constructor { name: "int".into(), generics: vec![], traits: vec![] }),
+        //     ("float", Type::Constructor { name: "float".into(), generics: vec![], traits: vec![] }),
+        //     ("bool", Type::Constructor { name: "bool".into(), generics: vec![], traits: vec![] }),
+        //     ("char", Type::Constructor { name: "char".into(), generics: vec![], traits: vec![] }),
+        //     ("string", Type::Constructor { name: "string".into(), generics: vec![], traits: vec![] }),
+        //     ("void", Type::Unit),
+        // ];
+
+        // for (name, ty) in primitives {
+        //     self.type_aliases.insert(name.into(), Arc::new(ty));
+        // }
+
+        // Add built-in functions
+        // arg types are just a placeholder
+        let builtin_fns = vec![
+            (
+                "print",
+                Type::Function {
+                    params: vec![t_string!()],
+                    return_type: t_unit!(),
+                },
+            ),
+            (
+                "println",
+                Type::Function {
+                    params: vec![t_string!()],
+                    return_type: t_unit!(),
+                },
+            ),
+            (
+                "whattype",
+                Type::Function {
+                    params: vec![t_string!()],
+                    return_type: t_string!(),
+                },
+            ),
+            (
+                "malloc",
+                Type::Function {
+                    params: vec![t_int!()],
+                    return_type: t_ptr!(),
+                },
+            ),
+            (
+                "free",
+                Type::Function {
+                    params: vec![t_ptr!()],
+                    return_type: t_unit!(),
+                },
+            ),
+        ];
+
+        for (name, ty) in builtin_fns {
+            self.variables.insert(name.into(), Arc::new(ty));
         }
     }
 
@@ -188,6 +247,17 @@ macro_rules! t_string {
     () => {
         Arc::new(Type::Constructor {
             name: "string".to_string(),
+            generics: vec![],
+            traits: vec!["Printable".to_string(), "Simple".to_string()],
+        })
+    };
+}
+
+#[macro_export]
+macro_rules! t_ptr {
+    () => {
+        Arc::new(Type::Constructor {
+            name: "ptr".to_string(),
             generics: vec![],
             traits: vec!["Printable".to_string(), "Simple".to_string()],
         })

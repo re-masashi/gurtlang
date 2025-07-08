@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::ast::{
     ASTNode, AssignOp, BinOp, Expr, Function, Struct, Type, TypeAnnot, TypedASTNode, TypedExpr,
-    TypedExprKind, TypedFunction, TypedStruct,
+    TypedExprKind, TypedFunction, TypedMatchArm, TypedStruct,
 };
 use crate::typechecker::{StructTy, TypeEnv, type_annot_to_type, type_string};
 use crate::{t_bool, t_float, t_int, t_list, t_string, t_unit, tvar};

@@ -528,7 +528,8 @@ fn test_parse_if_else() {
 #[test]
 fn test_parse_tuple() {
     let (ast, parser) = parse_str("(1, true, \"three\");");
-    assert!(!parser.errors.is_empty());
+    println!("{:?}", parser.errors);
+    assert!(parser.errors.is_empty());
 
     if let ASTNode::Expr((Expr::Tuple(elements), _)) = &ast[0].0 {
         assert_eq!(elements.len(), 3);

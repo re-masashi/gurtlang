@@ -6,7 +6,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::ast::{
-    Type, TypedASTNode, TypedEnum, TypedExpr, TypedExprKind, TypedFunction, TypedStruct,
+    Type, TypedASTNode, TypedEnum, TypedExpr, TypedExprKind, TypedExtern, TypedFunction,
+    TypedStruct,
 };
 
 // IR Types with debug spans
@@ -20,7 +21,7 @@ pub enum IRType {
     I64, // 64-bit integer
     F32, // 32-bit float
     F64, // 64-bit float
-    Ptr(Box<IRType>),
+    Ptr,
     Struct(String, Span),
     Array(Box<IRType>, usize),
     Function(Vec<IRType>, Box<IRType>),
@@ -36,7 +37,7 @@ impl fmt::Display for IRType {
             IRType::I64 => write!(f, "i64"),
             IRType::F32 => write!(f, "f32"),
             IRType::F64 => write!(f, "f64"),
-            IRType::Ptr(inner) => write!(f, "ptr<{}>", inner),
+            IRType::Ptr => write!(f, "ptr"),
             IRType::Struct(name, _) => write!(f, "struct %{}", name),
             IRType::Array(ty, size) => write!(f, "[{} x {}]", size, ty),
             IRType::Function(params, ret_ty) => {
@@ -155,6 +156,7 @@ pub enum Instruction {
     // Aggregates
     GetElementPtr {
         dest: String,
+        ty: IRType,
         base: Value,
         base_ty: IRType,
         indices: Vec<Value>,
@@ -508,6 +510,7 @@ pub struct Function {
     pub basic_blocks: Vec<BasicBlock>,
     pub is_entry: bool,
     pub span: Span,
+    pub is_extern: bool,
 }
 
 // Implement Display for Function
@@ -516,21 +519,37 @@ impl fmt::Display for Function {
         let params_str: Vec<String> = self
             .params
             .iter()
-            .map(|(name, ty)| format!("{} %{}", ty, name))
+            .map(|(name, ty)| {
+                if self.is_extern {
+                    format!("{}", ty)
+                } else {
+                    format!("{} %{}", ty, name)
+                }
+            })
             .collect();
         let entry_keyword = if self.is_entry { "entry" } else { "" };
-        writeln!(
-            f,
-            "define {} {} @{}({}) {{",
-            entry_keyword,
-            self.return_type,
-            self.name,
-            params_str.join(", ")
-        )?;
-        for block in &self.basic_blocks {
-            write!(f, "{}", block)?;
+        if self.is_extern {
+            writeln!(
+                f,
+                "extern {} @{}({})",
+                self.return_type,
+                self.name,
+                params_str.join(", ")
+            )
+        } else {
+            writeln!(
+                f,
+                "define {} {} @{}({}) {{",
+                entry_keyword,
+                self.return_type,
+                self.name,
+                params_str.join(", ")
+            )?;
+            for block in &self.basic_blocks {
+                write!(f, "{}", block)?;
+            }
+            writeln!(f, "}}")
         }
-        writeln!(f, "}}")
     }
 }
 
@@ -656,6 +675,7 @@ pub struct IRGenerator {
     module: Module,
     top_level_expressions: Vec<TypedExpr>,
     constructors: Vec<String>,
+    global_string_count: usize,
 }
 
 impl Default for IRGenerator {
@@ -687,6 +707,7 @@ impl IRGenerator {
             },
             top_level_expressions: vec![],
             constructors: vec![],
+            global_string_count: 0,
         }
     }
 
@@ -717,7 +738,7 @@ impl IRGenerator {
                 TypedASTNode::Error => {
                     // Ignore errors that made it this far
                 }
-                TypedASTNode::Extern(_) => todo!(),
+                TypedASTNode::Extern((e, _span)) => self.generate_extern(e),
             }
         }
     }
@@ -782,6 +803,31 @@ impl IRGenerator {
 
         // Finalize the function and add it to the module
         self.module.functions.push(func_gen.finalize());
+    }
+
+    /// Generates an extern definition.
+    fn generate_extern(&mut self, typed_extern: TypedExtern) {
+        let return_type = convert_type(&typed_extern.return_type.0);
+        let params: Vec<(String, IRType)> = typed_extern
+            .args
+            .iter()
+            .enumerate()
+            .map(|(i, (ty, _span))| {
+                // Generate parameter names since externs don't have them
+                (format!("arg{}", i), convert_type(ty))
+            })
+            .collect();
+
+        // Create an extern function (without body)
+        self.module.functions.push(Function {
+            name: typed_extern.name,
+            params,
+            return_type,
+            basic_blocks: Vec::new(),
+            is_entry: false,
+            is_extern: true, // Mark as extern
+            span: 0..0,      // Span not available in TypedExtern
+        });
     }
 
     /// Generates a constructor definition
@@ -899,6 +945,7 @@ impl<'a> FunctionGenerator<'a> {
                 basic_blocks: Vec::new(),
                 is_entry: false, // Set for `main` or program entry
                 span: 0..0,
+                is_extern: false,
             },
             symbol_table: HashMap::new(),
             current_block: None,
@@ -1143,12 +1190,6 @@ impl<'a> FunctionGenerator<'a> {
                 last_val
             }
 
-            TypedExprKind::Return(expr) => {
-                let retval = self.generate_expr(expr);
-                self.terminate_block(Terminator::Ret(retval, span));
-                None
-            }
-
             TypedExprKind::Call { args, function } => {
                 let func = function;
                 if let TypedExprKind::Variable(name) = &function.kind {
@@ -1225,7 +1266,427 @@ impl<'a> FunctionGenerator<'a> {
                 dest_reg.map(Value::Register) // Convert `Option<String>` to `Option<Value::Register>`
             }
 
-            _ => unimplemented!("Unsupported expr for IR generation: {:?}", expr.kind),
+            // TypedExprKind::String(s) => {
+            //     // Create global constant for the string
+            //     let global_name = format!("str.{}", s);
+            //     let ty = IRType::Array(Box::new(IRType::I8), s.len() + 1);
+
+            //     if !self.type_converter.module.global_vars.iter().any(|g| g.name == global_name) {
+            //         let bytes = s.bytes().map(|b| Constant::Int(b as i64)).collect();
+            //         self.type_converter.module.global_vars.push(GlobalVariable {
+            //             name: global_name.clone(),
+            //             ty: ty.clone(),
+            //             init: Some(Constant::Array(bytes)),
+            //             span: span.clone(),
+            //         });
+            //     }
+
+            //     // Get pointer to the string
+            //     let ptr_reg = self.new_register();
+            //     self.add_instruction(Instruction::GetElementPtr {
+            //         ty: IRType::Ptr,
+            //         dest: ptr_reg.clone(),
+            //         base: Value::Global(global_name),
+            //         base_ty: ty,
+            //         indices: vec![
+            //             Value::Constant(Constant::Int(0)),
+            //             Value::Constant(Constant::Int(0)),
+            //         ],
+            //         span,
+            //     });
+
+            //     Some(Value::Register(ptr_reg))
+            // }
+            TypedExprKind::Return(expr) => {
+                let retval = self.generate_expr(expr);
+                self.terminate_block(Terminator::Ret(retval, span));
+                None
+            }
+
+            // TypedExprKind::Array { elements } => {
+            //     let element_ty = if let Type::Array(inner) = &*expr.ty {
+            //         convert_type(inner)
+            //     } else {
+            //         panic!("Array expression doesn't have array type");
+            //     };
+
+            //     let mut current_value = Value::Constant(Constant::Undef);
+
+            //     for (index, element) in elements.iter().enumerate() {
+            //         let element_val = self.generate_expr(element).unwrap();
+            //         let dest = self.new_register();
+
+            //         self.add_instruction(Instruction::InsertValue {
+            //             dest: dest.clone(),
+            //             aggregate: current_value,
+            //             aggregate_ty: convert_type(&expr.ty),
+            //             value: element_val,
+            //             value_ty: element_ty.clone(),
+            //             index,
+            //             span: element.range.clone(),
+            //         });
+            //         current_value = Value::Register(dest);
+            //     }
+
+            //     Some(current_value)
+            // }
+            TypedExprKind::Index { array, index } => {
+                let array_val = self.generate_expr(array).unwrap();
+                let _index_val = self.generate_expr(index).unwrap();
+                let dest = self.new_register();
+
+                self.add_instruction(Instruction::ExtractValue {
+                    dest: dest.clone(),
+                    aggregate: array_val,
+                    index: 0, // Placeholder - need actual index calculation
+                    span,
+                });
+
+                Some(Value::Register(dest))
+            }
+
+            TypedExprKind::StructAccess {
+                struct_val,
+                field_name,
+            } => {
+                let struct_ty = convert_type(&struct_val.ty);
+                let struct_val = self.generate_expr(struct_val).unwrap();
+
+                // Look up field index
+                let field_index = if let IRType::Struct(name, _) = &struct_ty {
+                    self.type_converter
+                        .module
+                        .struct_types
+                        .iter()
+                        .find(|s| &s.name == name)
+                        .and_then(|s| s.fields.iter().position(|(n, _)| n == field_name))
+                        .expect("Struct field not found")
+                } else {
+                    panic!("Non-struct type in struct access");
+                };
+
+                let dest = self.new_register();
+                self.add_instruction(Instruction::ExtractValue {
+                    dest: dest.clone(),
+                    aggregate: struct_val,
+                    index: field_index,
+                    span,
+                });
+
+                Some(Value::Register(dest))
+            }
+
+            TypedExprKind::MethodCall {
+                struct_val,
+                method_name,
+                args,
+            } => {
+                // Look up method function
+                let func_val = Value::Global(method_name.clone());
+
+                // Generate struct value
+                let struct_val = self.generate_expr(struct_val).unwrap();
+
+                // Generate arguments
+                let mut arg_vals = vec![struct_val];
+                for arg in args {
+                    arg_vals.push(self.generate_expr(arg).unwrap());
+                }
+
+                // Determine return type
+                let return_ty = convert_type(&expr.ty);
+                let dest_reg = if return_ty == IRType::Void {
+                    None
+                } else {
+                    Some(self.new_register())
+                };
+
+                // Add call instruction
+                self.add_instruction(Instruction::Call {
+                    dest: dest_reg.clone(),
+                    func: func_val,
+                    args: arg_vals,
+                    ty: return_ty,
+                    span,
+                });
+
+                dest_reg.map(Value::Register)
+            }
+
+            TypedExprKind::Assign {
+                l_value,
+                r_value,
+                assign_op,
+            } => {
+                let r_val = self.generate_expr(r_value).unwrap();
+                let l_val = self.generate_expr(l_value).unwrap();
+
+                let ty = convert_type(&r_value.ty);
+
+                self.add_instruction(Instruction::Store {
+                    value: r_val,
+                    ptr: l_val,
+                    ty,
+                    span,
+                });
+
+                None
+            }
+
+            // TypedExprKind::UnOp { unop, expression } => {
+            //     let operand_val = self.generate_expr(expression).unwrap();
+            //     let dest = self.new_register();
+            //     let ty = convert_type(&expression.ty);
+
+            //     let op = match unop {
+            //         UnOp::Neg => crate::ir::UnOp::Neg,
+            //         UnOp::Not => crate::ir::UnOp::Not,
+            //     };
+
+            //     self.add_instruction(Instruction::UnOp {
+            //         dest: dest.clone(),
+            //         op,
+            //         operand: operand_val,
+            //         ty,
+            //         span,
+            //     });
+
+            //     Some(Value::Register(dest))
+            // }
+            TypedExprKind::Tuple(elements) => {
+                let tuple_ty = convert_type(&expr.ty);
+                let mut current_value = Value::Constant(Constant::Undef);
+
+                for (index, element) in elements.iter().enumerate() {
+                    let element_val = self.generate_expr(element).unwrap();
+                    let element_ty = convert_type(&element.ty);
+
+                    let dest = self.new_register();
+                    self.add_instruction(Instruction::InsertValue {
+                        dest: dest.clone(),
+                        aggregate: current_value,
+                        aggregate_ty: tuple_ty.clone(),
+                        value: element_val,
+                        value_ty: element_ty,
+                        index,
+                        span: element.range.clone(),
+                    });
+                    current_value = Value::Register(dest);
+                }
+
+                Some(current_value)
+            }
+
+            // TypedExprKind::EnumVariant { enum_name, variant_name, fields } => {
+            //     // Look up enum definition
+            //     let enum_def = self.type_converter.module.enum_types
+            //         .iter()
+            //         .find(|e| e.name == *enum_name)
+            //         .expect("Enum type not found");
+
+            //     // Find variant
+            //     let variant = enum_def.variants
+            //         .iter()
+            //         .find(|v| v.name == *variant_name)
+            //         .expect("Enum variant not found");
+
+            //     // Create undef value for the enum
+            //     let enum_ty = IRType::Enum(enum_name.clone(), enum_def.variants.clone(), span.clone());
+            //     let mut enum_val = Value::Constant(Constant::Undef);
+
+            //     // Insert tag
+            //     let tag_dest = self.new_register();
+            //     self.add_instruction(Instruction::InsertValue {
+            //         dest: tag_dest.clone(),
+            //         aggregate: enum_val,
+            //         aggregate_ty: enum_ty.clone(),
+            //         value: Value::Constant(Constant::Int(variant.tag as i64)),
+            //         value_ty: IRType::I32,
+            //         index: 0,
+            //         span,
+            //     });
+            //     enum_val = Value::Register(tag_dest);
+
+            //     // Handle payload if exists
+            //     if let Some(data_ty) = &variant.data_type {
+            //         let mut payload_val = Value::Constant(Constant::Undef);
+
+            //         match fields {
+            //             // Tuple variant
+            //             fields if fields.iter().all(|(name, _)| name.is_none()) => {
+            //                 for (index, (_, expr)) in fields.iter().enumerate() {
+            //                     let field_val = self.generate_expr(expr).unwrap();
+            //                     let field_ty = convert_type(&expr.ty);
+
+            //                     let dest = self.new_register();
+            //                     self.add_instruction(Instruction::InsertValue {
+            //                         dest: dest.clone(),
+            //                         aggregate: payload_val,
+            //                         aggregate_ty: data_ty.clone(),
+            //                         value: field_val,
+            //                         value_ty: field_ty,
+            //                         index,
+            //                         span: expr.range.clone(),
+            //                     });
+            //                     payload_val = Value::Register(dest);
+            //                 }
+            //             }
+            //             // Struct variant
+            //             _ => {
+            //                 let struct_ty = convert_type(&expr.ty);
+            //                 for (field_name, expr) in fields {
+            //                     let field_name = field_name.as_ref().expect("Field name missing");
+            //                     let field_index = if let IRType::Struct(name, _) = data_ty {
+            //                         self.type_converter.module.struct_types
+            //                             .iter()
+            //                             .find(|s| &s.name == name)
+            //                             .and_then(|s| s.fields.iter().position(|(n, _)| n == field_name))
+            //                             .expect("Struct field not found")
+            //                     } else {
+            //                         panic!("Non-struct type in struct variant");
+            //                     };
+
+            //                     let field_val = self.generate_expr(expr).unwrap();
+            //                     let field_ty = convert_type(&expr.ty);
+
+            //                     let dest = self.new_register();
+            //                     self.add_instruction(Instruction::InsertValue {
+            //                         dest: dest.clone(),
+            //                         aggregate: payload_val,
+            //                         aggregate_ty: data_ty.clone(),
+            //                         value: field_val,
+            //                         value_ty: field_ty,
+            //                         index: field_index,
+            //                         span: expr.range.clone(),
+            //                     });
+            //                     payload_val = Value::Register(dest);
+            //                 }
+            //             }
+            //         }
+
+            //         // Insert payload into enum
+            //         let payload_dest = self.new_register();
+            //         self.add_instruction(Instruction::InsertValue {
+            //             dest: payload_dest.clone(),
+            //             aggregate: enum_val,
+            //             aggregate_ty: enum_ty.clone(),
+            //             value: payload_val,
+            //             value_ty: data_ty.clone(),
+            //             index: 1,
+            //             span,
+            //         });
+            //         enum_val = Value::Register(payload_dest);
+            //     }
+
+            //     Some(enum_val)
+            // }
+
+            // TypedExprKind::Match { expr, arms } => {
+            //     let match_val = self.generate_expr(expr).unwrap();
+            //     let match_ty = convert_type(&expr.ty);
+
+            //     // Create blocks for each arm
+            //     let end_label = self.new_label("match_end");
+            //     let mut arm_labels = Vec::new();
+            //     for _ in arms {
+            //         arm_labels.push(self.new_label("match_arm"));
+            //     }
+
+            //     // Generate tag extraction
+            //     let tag_reg = self.new_register();
+            //     self.add_instruction(Instruction::ExtractValue {
+            //         dest: tag_reg.clone(),
+            //         aggregate: match_val,
+            //         index: 0, // Tag is first field
+            //         span,
+            //     });
+
+            //     // Create switch based on tag
+            //     let cases: Vec<(Constant, String)> = arms.iter()
+            //         .zip(&arm_labels)
+            //         .map(|(arm, label)| {
+            //             if let TypedPattern::EnumVariant { variant_name, .. } = &arm.pattern {
+            //                 let variant = self.type_converter.module.enum_types
+            //                     .iter()
+            //                     .find(|e| e.name == match_ty.get_name().unwrap())
+            //                     .and_then(|e| e.variants.iter().find(|v| v.name == *variant_name))
+            //                     .expect("Variant not found");
+            //                 (Constant::Int(variant.tag as i64), label.clone())
+            //             } else {
+            //                 panic!("Non-enum pattern in match");
+            //             }
+            //         })
+            //         .collect();
+
+            //     self.terminate_block(Terminator::Switch {
+            //         value: Value::Register(tag_reg),
+            //         cases,
+            //         default: end_label.clone(),
+            //         span,
+            //     });
+
+            //     // Generate each arm
+            //     let mut arm_results = Vec::new();
+            //     for (arm, arm_label) in arms.iter().zip(arm_labels) {
+            //         self.set_current_block(arm_label.clone());
+
+            //         // TODO: Implement pattern bindings
+            //         let arm_val = self.generate_expr(&arm.body).unwrap();
+            //         self.terminate_block(Terminator::BrUncond(end_label.clone(), arm.body.range.clone()));
+            //         arm_results.push((arm_val, arm_label));
+            //     }
+
+            //     // End block
+            //     self.set_current_block(end_label);
+            //     let result_reg = self.new_register();
+
+            //     let phi_options = arm_results.into_iter()
+            //         .map(|(val, label)| (val, label))
+            //         .collect();
+
+            //     self.add_instruction(Instruction::Phi {
+            //         dest: result_reg.clone(),
+            //         options: phi_options,
+            //         span,
+            //     });
+
+            //     Some(Value::Register(result_reg))
+            // }
+
+            // TypedExprKind::Lambda { args, expression } => {
+            //     // Create a new function for the lambda
+            //     let lambda_name = format!("lambda_{}", self.lambda_count);
+            //     self.lambda_count += 1;
+
+            //     let mut func_gen = FunctionGenerator::new(self.type_converter, lambda_name.clone());
+            //     func_gen.function.return_type = convert_type(&expression.ty);
+
+            //     // Add parameters
+            //     for (name, ty, _) in args {
+            //         func_gen.function.params.push((name.clone(), convert_type(ty)));
+            //         func_gen.symbol_table.insert(
+            //             name.clone(),
+            //             Value::Register(format!("%{}", name))
+            //         );
+            //     }
+
+            //     // Generate body
+            //     let entry_label = func_gen.new_label("entry");
+            //     func_gen.set_current_block(entry_label);
+            //     let body_val = func_gen.generate_expr(expression);
+
+            //     if func_gen.current_block.is_some() {
+            //         func_gen.terminate_block(Terminator::Ret(body_val, expression.range.clone()));
+            //     }
+
+            //     // Add function to module
+            //     self.type_converter.module.functions.push(func_gen.finalize());
+
+            //     // Return function pointer
+            //     Some(Value::Global(lambda_name))
+            // }
+            TypedExprKind::Error => None,
+            _ => todo!(),
         }
     }
 }
@@ -1235,11 +1696,12 @@ fn convert_type(ty: &Arc<Type>) -> IRType {
     match &**ty {
         Type::Constructor { name, .. } => match name.as_str() {
             "bool" => IRType::I1,
-            "byte" | "i8" => IRType::I8,
+            "byte" | "i8" | "char" => IRType::I8,
             "int" | "i32" => IRType::I32,
             "long" | "i64" => IRType::I64,
             "float" | "f32" => IRType::F32,
             "double" | "f64" => IRType::F64,
+            "ptr" | "string" => IRType::Ptr,
             _ => IRType::Struct(name.clone(), 0..0), // User-defined struct
         },
         Type::Function {

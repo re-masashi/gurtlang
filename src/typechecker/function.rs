@@ -4,8 +4,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::ast::{
-    ASTNode, AssignOp, BinOp, Expr, Function, Struct, Type, TypeAnnot, TypedASTNode, TypedExpr,
-    TypedExprKind, TypedFunction, TypedStruct,
+    ASTNode, AssignOp, BinOp, Expr, Extern, Function, Struct, Type, TypeAnnot, TypedASTNode,
+    TypedExpr, TypedExprKind, TypedExtern, TypedFunction, TypedStruct,
 };
 use crate::typechecker::{TypeEnv, type_annot_to_type};
 use crate::{t_bool, t_float, t_int, t_list, t_string, t_unit, tvar};
@@ -82,6 +82,43 @@ impl TypeEnv<'_> {
                 name: name.to_string(),
                 return_type: typed_return_type,
                 is_constructor: false,
+            },
+            fun_span.clone(),
+        )
+    }
+
+    pub fn extern_to_typed_extern(
+        &mut self,
+        function: (&Extern, &Range<usize>),
+    ) -> (TypedExtern, Range<usize>) {
+        let (function, fun_span) = function;
+        let Extern {
+            name,
+            args,
+            return_type,
+        } = function;
+        let typed_args = args
+            .iter()
+            .map(|(typeannot, range)| (type_annot_to_type(typeannot), range.clone()))
+            .collect::<Vec<_>>();
+        let arg_types = typed_args
+            .iter()
+            .map(|(t, _)| t.clone())
+            .collect::<Vec<_>>();
+        let typed_return_type = type_annot_to_type(&return_type.0);
+
+        let function_type = Arc::new(Type::Function {
+            params: arg_types,
+            return_type: typed_return_type.clone(),
+        });
+
+        self.insert_var(name.clone(), function_type.clone());
+
+        (
+            TypedExtern {
+                args: typed_args,
+                name: name.to_string(),
+                return_type: (typed_return_type, return_type.1.clone()),
             },
             fun_span.clone(),
         )

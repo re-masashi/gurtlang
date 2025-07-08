@@ -4,6 +4,7 @@ use ariadne::Report;
 use ariadne::ReportKind;
 use ariadne::Source;
 
+use gurtlang::ast::TypedASTNode;
 use gurtlang::ir::IRGenerator;
 use gurtlang::lexer::Token;
 use gurtlang::parser::Parser;
@@ -51,6 +52,7 @@ fn _main(path: &str) {
     };
 
     let mut type_env = TypeEnv::new(filepath.clone());
+    type_env.add_builtins();
     let typed_ast = type_env.ast_to_typed_ast(ast);
 
     if type_env.report_errors() {
@@ -58,6 +60,20 @@ fn _main(path: &str) {
     };
 
     let resolved_ast = type_env.resolve_all(typed_ast);
+    let resolved_ast = resolved_ast
+        .into_iter()
+        .map(|node| match node {
+            TypedASTNode::Expr((expr, span)) => {
+                TypedASTNode::Expr((type_env.builtin_macro_evaluation(expr), span))
+            }
+            TypedASTNode::Function((mut func, span)) => {
+                func.body = Box::new((type_env.builtin_macro_evaluation(func.body.0), func.body.1));
+                TypedASTNode::Function((func, span))
+            }
+            _ => node,
+        })
+        .collect();
+
     let mono_ast = type_env.monomorphize_ast(resolved_ast);
 
     // println!("{:#?}", mono_ast);

@@ -6,4 +6,4 @@ def fact(n)
 
 fact(0)
 
-whattype(2)
+"aaaaaaaa"

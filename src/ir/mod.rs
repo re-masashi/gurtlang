@@ -73,6 +73,7 @@ pub enum Constant {
     Int(i64),
     Float(f64),
     Bool(bool),
+    String(String),
     Null,
     Array(Vec<Constant>),
     Struct(String, Vec<Constant>),
@@ -96,6 +97,7 @@ impl fmt::Display for Constant {
                 write!(f, "struct %{}({})", name, fields_str.join(", "))
             }
             Constant::Undef => write!(f, "undef"),
+            Constant::String(s) => write!(f, "\"{}\"", s),
         }
     }
 }
@@ -675,7 +677,7 @@ pub struct IRGenerator {
     module: Module,
     top_level_expressions: Vec<TypedExpr>,
     constructors: Vec<String>,
-    global_string_count: usize,
+    // global_string_count: usize,
 }
 
 impl Default for IRGenerator {
@@ -693,6 +695,7 @@ struct FunctionGenerator<'a> {
     block_map: HashMap<String, BasicBlock>,
     register_count: u32,
     block_count: u32,
+    global_string_count: usize,
 }
 
 impl IRGenerator {
@@ -707,7 +710,7 @@ impl IRGenerator {
             },
             top_level_expressions: vec![],
             constructors: vec![],
-            global_string_count: 0,
+            // global_string_count: 0,
         }
     }
 
@@ -952,6 +955,7 @@ impl<'a> FunctionGenerator<'a> {
             block_map: HashMap::new(),
             register_count: 0,
             block_count: 0,
+            global_string_count: 0,
         }
     }
 
@@ -1266,37 +1270,34 @@ impl<'a> FunctionGenerator<'a> {
                 dest_reg.map(Value::Register) // Convert `Option<String>` to `Option<Value::Register>`
             }
 
-            // TypedExprKind::String(s) => {
-            //     // Create global constant for the string
-            //     let global_name = format!("str.{}", s);
-            //     let ty = IRType::Array(Box::new(IRType::I8), s.len() + 1);
+            TypedExprKind::String(s) => {
+                // Create a unique name for the string
+                let _global_name =
+                    format!("str_{}_{}", self.function.name, self.global_string_count);
+                self.global_string_count += 1;
 
-            //     if !self.type_converter.module.global_vars.iter().any(|g| g.name == global_name) {
-            //         let bytes = s.bytes().map(|b| Constant::Int(b as i64)).collect();
-            //         self.type_converter.module.global_vars.push(GlobalVariable {
-            //             name: global_name.clone(),
-            //             ty: ty.clone(),
-            //             init: Some(Constant::Array(bytes)),
-            //             span: span.clone(),
-            //         });
-            //     }
+                // Create the string as a constant value
+                let string_val = Value::Constant(Constant::String(s.clone()));
 
-            //     // Get pointer to the string
-            //     let ptr_reg = self.new_register();
-            //     self.add_instruction(Instruction::GetElementPtr {
-            //         ty: IRType::Ptr,
-            //         dest: ptr_reg.clone(),
-            //         base: Value::Global(global_name),
-            //         base_ty: ty,
-            //         indices: vec![
-            //             Value::Constant(Constant::Int(0)),
-            //             Value::Constant(Constant::Int(0)),
-            //         ],
-            //         span,
-            //     });
+                // Store it in a temporary alloca
+                let alloca_reg = self.new_register();
+                self.add_instruction(Instruction::Alloca {
+                    dest: alloca_reg.clone(),
+                    ty: IRType::Ptr,
+                    span: span.clone(),
+                });
 
-            //     Some(Value::Register(ptr_reg))
-            // }
+                self.add_instruction(Instruction::Store {
+                    value: string_val,
+                    ptr: Value::Register(alloca_reg.clone()),
+                    ty: IRType::Ptr,
+                    span,
+                });
+
+                // Return the pointer to the string
+                Some(Value::Register(alloca_reg))
+            }
+
             TypedExprKind::Return(expr) => {
                 let retval = self.generate_expr(expr);
                 self.terminate_block(Terminator::Ret(retval, span));
@@ -1416,7 +1417,7 @@ impl<'a> FunctionGenerator<'a> {
             TypedExprKind::Assign {
                 l_value,
                 r_value,
-                assign_op,
+                assign_op: _,
             } => {
                 let r_val = self.generate_expr(r_value).unwrap();
                 let l_val = self.generate_expr(l_value).unwrap();

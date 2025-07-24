@@ -110,7 +110,7 @@ fn _main(path: &str) {
 }
 
 fn main() {
-    _main("examples/3.gurt")
+    _main("examples/5.gurt")
 }
 
 #[cfg(test)]

@@ -6,4 +6,6 @@ def fact(n)
 
 fact(0)
 
-"aaaaaaaa"
+let x = [1,2,3]
+
+x[1]

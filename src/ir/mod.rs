@@ -253,11 +253,8 @@ impl fmt::Display for Instruction {
                     indices.iter().map(|idx| format!("{}", idx)).collect();
                 write!(
                     f,
-                    "%{} = getelementptr {} {}, [{}]",
-                    dest,
-                    base_ty,
-                    base,
-                    indices_str.join(", ")
+                    "%{} = gep {}, {}, [{}]",
+                    dest, base_ty, base, indices_str.join(", ")
                 )
             }
             Instruction::InsertValue {
@@ -1003,6 +1000,12 @@ impl<'a> FunctionGenerator<'a> {
 
     /// Finalizes the function by collecting all basic blocks.
     fn finalize(mut self) -> Function {
+        for block in &self.function.basic_blocks {
+            if block.terminator.is_none() {
+                panic!("Block {} has no terminator", block.label);
+            }
+        }
+
         // Add current block if it exists
         if let Some(label) = self.current_block.take() {
             if let Some(block) = self.block_map.remove(&label) {
@@ -1304,33 +1307,42 @@ impl<'a> FunctionGenerator<'a> {
                 None
             }
 
-            // TypedExprKind::Array { elements } => {
-            //     let element_ty = if let Type::Array(inner) = &*expr.ty {
-            //         convert_type(inner)
-            //     } else {
-            //         panic!("Array expression doesn't have array type");
-            //     };
+            TypedExprKind::Array { elements } => {
+                let element_ty = if let Type::Constructor{
+                    name,
+                    generics,
+                    ..
+                } = &*expr.ty{
+                    if name == "List" {
+                        convert_type(&generics[0])
+                    }else {
+                        panic!("Array expression doesn't have array type");
+                    }
+                } else {
+                    panic!("Array expression doesn't have array type");
+                };
 
-            //     let mut current_value = Value::Constant(Constant::Undef);
+                let mut current_value = Value::Constant(Constant::Undef);
 
-            //     for (index, element) in elements.iter().enumerate() {
-            //         let element_val = self.generate_expr(element).unwrap();
-            //         let dest = self.new_register();
+                for (index, element) in elements.iter().enumerate() {
+                    let element_val = self.generate_expr(element).unwrap();
+                    let dest = self.new_register();
 
-            //         self.add_instruction(Instruction::InsertValue {
-            //             dest: dest.clone(),
-            //             aggregate: current_value,
-            //             aggregate_ty: convert_type(&expr.ty),
-            //             value: element_val,
-            //             value_ty: element_ty.clone(),
-            //             index,
-            //             span: element.range.clone(),
-            //         });
-            //         current_value = Value::Register(dest);
-            //     }
+                    self.add_instruction(Instruction::InsertValue {
+                        dest: dest.clone(),
+                        aggregate: current_value,
+                        aggregate_ty: convert_type(&expr.ty),
+                        value: element_val,
+                        value_ty: element_ty.clone(),
+                        index,
+                        span: element.range.clone(),
+                    });
+                    current_value = Value::Register(dest);
+                }
 
-            //     Some(current_value)
-            // }
+                Some(current_value)
+            }
+
             TypedExprKind::Index { array, index } => {
                 let array_val = self.generate_expr(array).unwrap();
                 let _index_val = self.generate_expr(index).unwrap();
@@ -1434,26 +1446,28 @@ impl<'a> FunctionGenerator<'a> {
                 None
             }
 
-            // TypedExprKind::UnOp { unop, expression } => {
-            //     let operand_val = self.generate_expr(expression).unwrap();
-            //     let dest = self.new_register();
-            //     let ty = convert_type(&expression.ty);
+            TypedExprKind::UnOp { unop, expression } => {
+                let operand_val = self.generate_expr(expression).unwrap();
+                let dest = self.new_register();
+                let ty = convert_type(&expression.ty);
 
-            //     let op = match unop {
-            //         UnOp::Neg => crate::ir::UnOp::Neg,
-            //         UnOp::Not => crate::ir::UnOp::Not,
-            //     };
+                let op = match unop {
+                    crate::ast::UnOp::Minus => crate::ir::UnOp::Neg,
+                    crate::ast::UnOp::Not => crate::ir::UnOp::Not,
+                    crate::ast::UnOp::Plus => todo!(), // why would you do this
+                };
 
-            //     self.add_instruction(Instruction::UnOp {
-            //         dest: dest.clone(),
-            //         op,
-            //         operand: operand_val,
-            //         ty,
-            //         span,
-            //     });
+                self.add_instruction(Instruction::UnOp {
+                    dest: dest.clone(),
+                    op,
+                    operand: operand_val,
+                    ty,
+                    span,
+                });
 
-            //     Some(Value::Register(dest))
-            // }
+                Some(Value::Register(dest))
+            }
+
             TypedExprKind::Tuple(elements) => {
                 let tuple_ty = convert_type(&expr.ty);
                 let mut current_value = Value::Constant(Constant::Undef);
@@ -1714,10 +1728,10 @@ fn convert_type(ty: &Arc<Type>) -> IRType {
             IRType::Function(param_types, ret_type)
         }
         Type::Tuple(_types) => {
-            unimplemented!("Tuple to IRType conversion not yet supported");
+            IRType::Struct("tuple".into(), 0..0)
         }
         Type::Unit => IRType::Void,
-        Type::Variable(_) => panic!("Cannot generate IR for unresolved generic type variable."),
+        Type::Variable(_) => panic!("Cannot generate IR for unresolved generic type variable. If this happens. Please report it as a bug."),
         _ => unimplemented!("Unsupported type for IR generation: {:?}", ty),
     }
 }

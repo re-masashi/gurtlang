@@ -36,14 +36,7 @@ impl TypeEnv<'_> {
             _ if t1 == t2 => true,
 
             // Variable unification
-            (Type::Variable(i), _) => {
-                println!(
-                    "UNIFY FAILED: Occurs check failed for TypeVar({}) and {}",
-                    i,
-                    type_string(&t2)
-                );
-                self.bind(*i, t2.clone(), span1)
-            }
+            (Type::Variable(i), _) => self.bind(*i, t2.clone(), span1),
             (_, Type::Variable(i)) => self.bind(*i, t1.clone(), span2),
 
             // Union type unification

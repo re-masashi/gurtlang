@@ -142,13 +142,18 @@ impl CompilationPipeline {
             })
             .collect();
 
+        println!("resolved ast {:?}", resolved_ast);
+
         let mono_ast = type_env.monomorphize_ast(resolved_ast);
+
+        println!("mono ast {:?}", mono_ast);
 
         // Validation
         let validation_errors = validation::validate_ast(&mono_ast, self.filepath.clone());
         if !validation_errors.is_empty() {
-            for (_, span, _error) in validation_errors {
+            for (_, span, error) in validation_errors {
                 self.report_validation_error(&span);
+                println!("validation error: {error} at {span:?}")
             }
             return Err(CompilationError::ValidationError);
         }

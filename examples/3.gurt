@@ -1,11 +1,21 @@
 def fact(n)
-   if n == 1 then
+   if n <= 1 then
        1
    else
        n * fact(n-1) 
 
-fact(0)
+let a = fact(1)
 
-let x = [1,2,3]
+println(a)
 
-x[1]
+let x = [1, 2, 3]
+let y = [4, 5, 6]
+
+let z = x+y
+
+println(z[1])
+
+let s1 = "hello "
+let s2 = "world"
+
+println(s1+s2)

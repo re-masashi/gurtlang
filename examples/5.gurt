@@ -11,4 +11,6 @@ struct Point
 	z float
 end
 
-Point(0, 0, 0)
+let p = Point(0, 0, 0)
+
+p.x

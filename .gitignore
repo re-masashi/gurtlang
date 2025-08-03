@@ -1,1 +1,5 @@
 /target
+-flto
+output.md
+examples/array_c
+examples/fib_c

@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use crate::ast::Pattern;
+use crate::ast::TypedExtern;
 use crate::ast::TypedMatchArm;
 use crate::ast::TypedPattern;
 use crate::typechecker::EnumVariantKind;
@@ -11,11 +12,11 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::ast::{
-    ASTNode, AssignOp, BinOp, Expr, Function, Struct, Type, TypeAnnot, TypedASTNode, TypedExpr,
-    TypedExprKind, TypedFunction, TypedStruct, UnOp,
+    ASTNode, AssignOp, BinOp, Expr, Extern, Function, Struct, Type, TypeAnnot, TypedASTNode,
+    TypedExpr, TypedExprKind, TypedFunction, TypedStruct, UnOp,
 };
 use crate::typechecker::{TypeEnv, type_annot_to_type, type_string};
-use crate::{t_bool, t_float, t_int, t_list, t_string, t_unit, tvar};
+use crate::{t_bool, t_char, t_float, t_int, t_list, t_string, t_unit, tvar};
 
 impl TypeEnv<'_> {
     pub fn ast_to_typed_ast(&mut self, ast: Vec<(ASTNode, Range<usize>)>) -> Vec<TypedASTNode> {
@@ -37,6 +38,7 @@ impl TypeEnv<'_> {
             }
             ASTNode::Extern(func) => {
                 TypedASTNode::Extern(self.extern_to_typed_extern((&func, span)))
+                // todo!()
             }
             ASTNode::Struct(struct_) => {
                 TypedASTNode::Struct(self.struct_to_typed_struct((&struct_, span)))
@@ -47,6 +49,37 @@ impl TypeEnv<'_> {
             ASTNode::TypeAlias(_, _) => todo!(),
             ASTNode::Impl(_) => todo!(),
         }
+    }
+
+    pub fn extern_to_typed_extern(
+        &mut self,
+        extern_func: (&Extern, &std::ops::Range<usize>),
+    ) -> (TypedExtern, std::ops::Range<usize>) {
+        let (extern_func, fun_span) = extern_func;
+
+        let args = extern_func
+            .args
+            .iter()
+            .map(|(ty_annot, range)| {
+                (
+                    type_annot_to_type(ty_annot), // Convert to Arc<Type>
+                    range.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let return_type = (
+            type_annot_to_type(&extern_func.return_type.0),
+            fun_span.clone(),
+        );
+
+        let typed_extern = TypedExtern {
+            name: extern_func.name.clone(),
+            args,
+            return_type,
+        };
+
+        (typed_extern, fun_span.clone())
     }
 
     pub fn expr_to_typed_expr(&mut self, expr: (&Expr, &Range<usize>)) -> TypedExpr {
@@ -1072,6 +1105,78 @@ impl TypeEnv<'_> {
                                 range: expr.range,
                             };
                         }
+                        "len" => {
+                            if args.len() != 1 {
+                                // len() takes exactly one argument
+                                return TypedExpr {
+                                    kind: TypedExprKind::Call {
+                                        function: Box::new(func),
+                                        args,
+                                    },
+                                    ty: expr.ty,
+                                    range: expr.range,
+                                };
+                            }
+                            let arg = &args[0];
+                            let range = expr.range.clone();
+
+                            // Depending on the argument type, generate the proper IR-compatible expression:
+                            match &*arg.ty {
+                                Type::Constructor { name, .. } if name == "string" => {
+                                    // Replace with call to string_length runtime function
+                                    return TypedExpr {
+                                        kind: TypedExprKind::Call {
+                                            function: Box::new(TypedExpr {
+                                                kind: TypedExprKind::Variable(
+                                                    "string_length".to_string(),
+                                                ),
+                                                ty: Type::Function {
+                                                    params: vec![t_string!()],
+                                                    return_type: t_int!(), // int length
+                                                }
+                                                .into(),
+                                                range: range.clone(),
+                                            }),
+                                            args: vec![arg.clone()],
+                                        },
+                                        ty: t_int!(),
+                                        range,
+                                    };
+                                }
+                                Type::Constructor { name, .. } if name == "List" => {
+                                    // Replace with call to array_length runtime function
+                                    return TypedExpr {
+                                        kind: TypedExprKind::Call {
+                                            function: Box::new(TypedExpr {
+                                                kind: TypedExprKind::Variable(
+                                                    "array_length".to_string(),
+                                                ),
+                                                ty: Type::Function {
+                                                    params: vec![arg.ty.clone()],
+                                                    return_type: t_int!(),
+                                                }
+                                                .into(),
+                                                range: range.clone(),
+                                            }),
+                                            args: vec![arg.clone()],
+                                        },
+                                        ty: t_int!(),
+                                        range,
+                                    };
+                                }
+                                _ => {
+                                    // For unsupported types, fallback to call (which will give error downstream)
+                                    return TypedExpr {
+                                        kind: TypedExprKind::Call {
+                                            function: Box::new(func),
+                                            args,
+                                        },
+                                        ty: expr.ty,
+                                        range: expr.range,
+                                    };
+                                }
+                            }
+                        }
                         "print" | "println" => {
                             // If no arguments, handle special cases
                             if args.is_empty() {
@@ -1137,7 +1242,7 @@ impl TypeEnv<'_> {
                                         operator: BinOp::Add,
                                         l_value: Box::new(joined),
                                         r_value: Box::new(TypedExpr {
-                                            kind: TypedExprKind::String("\n".to_string()),
+                                            kind: TypedExprKind::String("\n".to_string()), // This should create global
                                             ty: t_string!(),
                                             range: range.clone(),
                                         }),
@@ -1282,26 +1387,80 @@ impl TypeEnv<'_> {
         match expr.ty.as_ref() {
             Type::Constructor { name, .. } if name == "string" => expr,
             Type::Constructor { name, .. } => {
-                // For primitive types, call to_string method
-                if ["int", "float", "bool", "char"].contains(&name.as_str()) {
-                    let range = expr.range.clone();
-                    TypedExpr {
-                        kind: TypedExprKind::MethodCall {
-                            struct_val: Box::new(expr),
-                            method_name: "to_string".to_string(),
-                            args: vec![],
+                let range = expr.range.clone();
+                match name.as_str() {
+                    "int" => TypedExpr {
+                        kind: TypedExprKind::Call {
+                            function: Box::new(TypedExpr {
+                                kind: TypedExprKind::Variable("int_to_string".to_string()),
+                                ty: Type::Function {
+                                    params: vec![t_int!()],
+                                    return_type: t_string!(),
+                                }
+                                .into(),
+                                range: range.clone(),
+                            }),
+                            args: vec![expr],
                         },
                         ty: t_string!(),
                         range,
-                    }
-                }
-                // For structs and enums, show type name
-                else {
-                    let type_str = format!("<{}>", name);
-                    TypedExpr {
-                        kind: TypedExprKind::String(type_str),
+                    },
+                    "float" => TypedExpr {
+                        kind: TypedExprKind::Call {
+                            function: Box::new(TypedExpr {
+                                kind: TypedExprKind::Variable("float_to_string".to_string()),
+                                ty: Type::Function {
+                                    params: vec![t_float!()],
+                                    return_type: t_string!(),
+                                }
+                                .into(),
+                                range: range.clone(),
+                            }),
+                            args: vec![expr],
+                        },
                         ty: t_string!(),
-                        range: expr.range,
+                        range,
+                    },
+                    "bool" => TypedExpr {
+                        kind: TypedExprKind::Call {
+                            function: Box::new(TypedExpr {
+                                kind: TypedExprKind::Variable("bool_to_string".to_string()),
+                                ty: Type::Function {
+                                    params: vec![t_bool!()],
+                                    return_type: t_string!(),
+                                }
+                                .into(),
+                                range: range.clone(),
+                            }),
+                            args: vec![expr],
+                        },
+                        ty: t_string!(),
+                        range,
+                    },
+                    "char" => TypedExpr {
+                        kind: TypedExprKind::Call {
+                            function: Box::new(TypedExpr {
+                                kind: TypedExprKind::Variable("char_to_string".to_string()),
+                                ty: Type::Function {
+                                    params: vec![t_char!()],
+                                    return_type: t_string!(),
+                                }
+                                .into(),
+                                range: range.clone(),
+                            }),
+                            args: vec![expr],
+                        },
+                        ty: t_string!(),
+                        range,
+                    },
+                    // For structs and enums, show type name as string literal
+                    _ => {
+                        let type_str = format!("<{}>", name);
+                        TypedExpr {
+                            kind: TypedExprKind::String(type_str),
+                            ty: t_string!(),
+                            range: expr.range,
+                        }
                     }
                 }
             }

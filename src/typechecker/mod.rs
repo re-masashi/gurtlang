@@ -243,6 +243,17 @@ macro_rules! t_float {
 }
 
 #[macro_export]
+macro_rules! t_char {
+    () => {
+        Arc::new(Type::Constructor {
+            name: "char".to_string(),
+            generics: vec![],
+            traits: vec!["Printable".to_string(), "Simple".to_string()],
+        })
+    };
+}
+
+#[macro_export]
 macro_rules! t_string {
     () => {
         Arc::new(Type::Constructor {

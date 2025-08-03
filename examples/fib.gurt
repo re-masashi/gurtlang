@@ -1,0 +1,10 @@
+def fib_helper(n, a, b)
+    if n == 0 then 
+        a
+    else 
+        fib_helper(n - 1, b, a + b)
+
+def fib(n)
+    fib_helper(n, 0, 1)
+
+let _a = fib(35)

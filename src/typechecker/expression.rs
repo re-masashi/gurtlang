@@ -199,52 +199,30 @@ impl TypeEnv<'_> {
                                 self.expr_to_typed_expr((arg, span))
                             })
                             .collect::<Vec<_>>();
-
-                        // Create a function type with fresh type variables
-                        let arg_types: Vec<_> = new_args.iter().map(|arg| arg.ty.clone()).collect();
-                        let return_type = self.new_typevar(); // Fresh return type
-
-                        let expected_fn_type = Arc::new(Type::Function {
-                            params: arg_types,
-                            return_type: return_type.clone(),
-                        });
-
-                        // Unify the function's type with our expected function type
-                        self.unify(typed_fun.ty.clone(), expected_fn_type, span, span);
-
+                        let ty = typed_fun.ty.clone();
                         (
                             TypedExprKind::Call {
                                 function: Box::new(typed_fun),
                                 args: new_args,
                             },
-                            return_type, // Return the return type, not the function type!
+                            ty,
                         )
                     }
                     Type::Function {
-                        params,
+                        params: _,
                         return_type,
                     } => {
-                        // Type check each argument and unify with parameter type
-                        let typed_args = args
+                        let new_args = args
                             .iter()
-                            .map(|(expr, range)| self.expr_to_typed_expr((expr, range)))
+                            .map(|arg| {
+                                let (arg, span) = arg;
+                                self.expr_to_typed_expr((arg, span))
+                            })
                             .collect::<Vec<_>>();
-
-                        for (arg, param_ty) in typed_args.iter().zip(params.iter()) {
-                            if !self.unify(
-                                arg.ty.clone(),
-                                param_ty.clone(),
-                                &span.clone(),
-                                &span.clone(),
-                            ) {
-                                panic!("UNIFICATION FAILED");
-                            };
-                        }
-
                         (
                             TypedExprKind::Call {
-                                function: Box::new(typed_fun.clone()),
-                                args: typed_args,
+                                function: Box::new(typed_fun),
+                                args: new_args,
                             },
                             return_type.clone(),
                         )

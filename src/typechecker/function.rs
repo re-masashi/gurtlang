@@ -17,7 +17,7 @@ impl TypeEnv<'_> {
     ) -> (TypedFunction, Range<usize>) {
         let was_in_function = self.in_function;
         self.in_function = true;
-        self.return_depth = 0;
+        self.return_depth = 0; // Reset depth for new function
 
         let (function, fun_span) = function;
         let Function {
@@ -26,110 +26,99 @@ impl TypeEnv<'_> {
             body,
             return_type,
         } = function;
-
-        // Step 1: Process arguments and create provisional function type
         let typed_args = args
             .iter()
             .map(|(argname, typeannot, range)| match typeannot {
                 Some(ty) => (argname.to_string(), type_annot_to_type(ty), range.clone()),
                 None => {
                     let new_typevar = self.new_typevar();
+                    self.insert_var(argname.clone(), new_typevar.clone());
                     (argname.to_string(), new_typevar, range.clone())
                 }
             })
             .collect::<Vec<_>>();
-
         let arg_types: Vec<_> = typed_args.iter().map(|(_, ty, _)| ty.clone()).collect();
-
-        // Step 2: Create provisional return type (critical for recursion)
         let provisional_return_type = match return_type {
             Some((ty, _)) => type_annot_to_type(ty),
-            None => {
-                // For recursive functions without explicit return type,
-                // we need to create a type variable that can be unified later
-                self.new_typevar()
-            }
+            None => self.new_typevar(),
         };
 
-        // Step 3: Create and register function type BEFORE analyzing body
         let function_type = Arc::new(Type::Function {
-            params: arg_types.clone(),
+            params: arg_types,
             return_type: provisional_return_type.clone(),
         });
 
-        // CRITICAL: Insert function into environment before analyzing body
-        // This allows recursive calls to find the function
         self.insert_var(name.clone(), function_type.clone());
 
-        // Step 4: Create new scope for function parameters
-        let old_vars = self.variables.clone();
-        for (arg_name, arg_type, _) in &typed_args {
-            self.insert_var(arg_name.clone(), arg_type.clone());
-        }
-
-        // Step 5: Analyze function body
-        let (body_expr, body_span) = &**body;
-        let typed_body = self.expr_to_typed_expr((body_expr, body_span));
-
-        // Step 6: Unify body type with return type
-        if !self.unify(
-            typed_body.ty.clone(),
+        let (body, body_span) = &**body;
+        let typed_body = (
+            self.expr_to_typed_expr((body, body_span)),
+            body_span.clone(),
+        );
+        self.unify(
+            typed_body.0.ty.clone(),
             provisional_return_type.clone(),
-            &typed_body.range,
             body_span,
-        ) {
-            // If unification fails and we don't have an explicit return type,
-            // try to resolve the type variable to something concrete
-            if return_type.is_none() {
-                let resolved_return = self.resolve_deep(provisional_return_type.clone());
-                if let Type::Variable(_) = &*resolved_return {
-                    // Still unresolved - default to the body type
-                    self.unify(
-                        provisional_return_type.clone(),
-                        typed_body.ty.clone(),
-                        body_span,
-                        &typed_body.range,
-                    );
-                }
-            }
-        }
-
-        // Step 7: Resolve final types
-        let final_return_type = self.resolve_deep(provisional_return_type.clone());
-        let final_arg_types: Vec<_> = typed_args
-            .iter()
-            .map(|(name, ty, span)| (name.clone(), self.resolve_deep(ty.clone()), span.clone()))
-            .collect();
-
-        // Step 8: Update function type in environment with resolved types
-        let final_function_type = Arc::new(Type::Function {
-            params: final_arg_types
-                .iter()
-                .map(|(_, ty, _)| ty.clone())
-                .collect(),
-            return_type: final_return_type.clone(),
-        });
-        self.insert_var(name.clone(), final_function_type.clone());
-
-        // Step 9: Restore previous variable scope
-        self.variables = old_vars;
-        // Re-insert the final function type
-        self.insert_var(name.clone(), final_function_type);
+            body_span,
+        );
 
         self.in_function = was_in_function;
 
-        let typed_return_type = match return_type {
-            Some((_, span)) => (final_return_type, span.clone()),
-            None => (final_return_type, typed_body.range.clone()),
-        };
+        let final_return_type = self.resolve_deep(provisional_return_type);
 
+        let typed_return_type = match return_type {
+            Some((return_type, span)) => (type_annot_to_type(return_type), span.clone()),
+            None => (final_return_type, typed_body.0.range.clone()),
+        };
+        let function_type = Arc::new(Type::Function {
+            params: typed_args.iter().map(|(_, ty, _)| ty.clone()).collect(),
+            return_type: typed_return_type.0.clone(),
+        });
+        self.insert_var(name.clone(), function_type.clone());
         (
             TypedFunction {
-                args: final_arg_types,
-                body: Box::new((typed_body, body_span.clone())),
+                args: typed_args,
+                body: Box::new(typed_body),
                 name: name.to_string(),
                 return_type: typed_return_type,
                 is_constructor: false,
+            },
+            fun_span.clone(),
+        )
+    }
+
+    pub fn extern_to_typed_extern(
+        &mut self,
+        function: (&Extern, &Range<usize>),
+    ) -> (TypedExtern, Range<usize>) {
+        let (function, fun_span) = function;
+        let Extern {
+            name,
+            args,
+            return_type,
+        } = function;
+        let typed_args = args
+            .iter()
+            .map(|(typeannot, range)| (type_annot_to_type(typeannot), range.clone()))
+            .collect::<Vec<_>>();
+        let arg_types = typed_args
+            .iter()
+            .map(|(t, _)| t.clone())
+            .collect::<Vec<_>>();
+        let typed_return_type = type_annot_to_type(&return_type.0);
+
+        let function_type = Arc::new(Type::Function {
+            params: arg_types,
+            return_type: typed_return_type.clone(),
+        });
+
+        self.insert_var(name.clone(), function_type.clone());
+
+        (
+            TypedExtern {
+                args: typed_args,
+                name: name.to_string(),
+                return_type: (typed_return_type, return_type.1.clone()),
             },
             fun_span.clone(),
         )

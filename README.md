@@ -16,3 +16,5 @@ A WIP compiler with some nice and precise error reporting.
 - [ ] Standard library
 - [ ] Package manager
 - [ ] Playground
+
+Mainly made this during my LLM detox.

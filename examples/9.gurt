@@ -1,8 +1,0 @@
-struct Person
-	name string
-	age int
-	friends List<Person>
-	archnemesis Person
-end
-
-Person()

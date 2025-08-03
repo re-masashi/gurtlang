@@ -130,13 +130,39 @@ impl TypeEnv<'_> {
                 span,
             )),
             TypedASTNode::Function((func, span)) => {
-                // Process function body for nested generics
+                // Process function body recursively
                 let (body_expr, body_span) = *func.body;
                 let processed_body =
                     self.process_expr(body_expr, generic_fns, specialized_fns, specialized_structs);
+
+                // Attempt to resolve parameter type variables after typechecking function body
+                let mut updated_args = func.args.clone();
+
+                for (_param_name, param_type, _param_span) in &mut updated_args {
+                    if let Type::Variable(var_id) = &**param_type {
+                        if let Some(resolved_type) = self.substitutions.get(var_id) {
+                            *param_type = (**resolved_type).clone().into();
+                        }
+                    }
+                }
+
+                // Also resolve the return type if it's a variable
+                let resolved_return_type = match &*func.return_type.0 {
+                    Type::Variable(var_id) => {
+                        if let Some(resolved) = self.substitutions.get(var_id) {
+                            (*resolved).clone()
+                        } else {
+                            func.return_type.0.clone()
+                        }
+                    }
+                    _ => func.return_type.0.clone(),
+                };
+
                 TypedASTNode::Function((
                     TypedFunction {
+                        args: updated_args,
                         body: Box::new((processed_body, body_span)),
+                        return_type: (resolved_return_type, func.return_type.1),
                         ..func
                     },
                     span,

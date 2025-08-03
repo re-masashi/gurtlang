@@ -1,4 +1,3 @@
-// typechecker/enum_.rs
 use super::*;
 use crate::ast::TypedEnum;
 use crate::ast::TypedEnumVariant;

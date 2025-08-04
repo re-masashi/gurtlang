@@ -413,6 +413,34 @@ pub struct TypedFunction {
     pub is_constructor: bool,
 }
 
+impl TypedFunction {
+    pub fn is_generic(&self) -> bool {
+        self.args
+            .iter()
+            .any(|(_, ty, _)| self.contains_type_variables(ty))
+            || self.contains_type_variables(&self.return_type.0)
+    }
+
+    fn contains_type_variables(&self, ty: &Arc<Type>) -> bool {
+        match &**ty {
+            Type::Variable(_) => true,
+            Type::Constructor { generics, .. } => {
+                generics.iter().any(|g| self.contains_type_variables(g))
+            }
+            Type::Function {
+                params,
+                return_type,
+            } => {
+                params.iter().any(|p| self.contains_type_variables(p))
+                    || self.contains_type_variables(return_type)
+            }
+            Type::Tuple(types) => types.iter().any(|t| self.contains_type_variables(t)),
+            Type::Union(types) => types.iter().any(|t| self.contains_type_variables(t)),
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedExtern {
     pub name: String,
@@ -446,14 +474,4 @@ pub enum TypedEnumVariantKind {
     Unit,
     Tuple(Vec<Arc<Type>>),
     Struct(Vec<(String, Arc<Type>)>),
-}
-
-impl TypedFunction {
-    /// Checks if a function is generic (contains type variables)
-    pub fn is_generic(&self) -> bool {
-        self.args
-            .iter()
-            .any(|(_, ty, _)| matches!(&**ty, Type::Variable(_)))
-            || matches!(&*self.return_type.0, Type::Variable(_))
-    }
 }

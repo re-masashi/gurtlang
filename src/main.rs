@@ -142,11 +142,11 @@ impl CompilationPipeline {
             })
             .collect();
 
-        println!("resolved ast {:?}", resolved_ast);
+        // println!("resolved ast {:#?}", resolved_ast);
 
         let mono_ast = type_env.monomorphize_ast(resolved_ast);
 
-        println!("mono ast {:?}", mono_ast);
+        // println!("mono ast {:#?}", mono_ast);
 
         // Validation
         let validation_errors = validation::validate_ast(&mono_ast, self.filepath.clone());
@@ -472,7 +472,7 @@ fn main() {
 #[cfg(test)]
 #[test]
 fn test_main() {
-    match CompilationPipeline::new("examples/5.gurt").compile() {
+    match CompilationPipeline::new("examples/3.gurt").compile() {
         Ok(_) => println!("Test passed"),
         Err(e) => panic!("Test failed: {}", e),
     }

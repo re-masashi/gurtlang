@@ -1785,7 +1785,10 @@ fn test_recursive_function() {
     );
 
     if let Some(TypedASTNode::Function((typed_fact_fn, _))) = typed_ast.get(0) {
-        assert_eq!(typed_fact_fn.name, "fact", "Function name should be 'fact'");
+        assert_eq!(
+            typed_fact_fn.name, "fact",
+            "Function name should be 'fact_int_to_int'"
+        );
         assert_eq!(
             typed_fact_fn.args.len(),
             1,

@@ -319,19 +319,19 @@ impl IRBuilder {
                 }
                 // Handle other expressions (like function calls)
                 _ => {
-                    let val = self.generate_expr(&expr);
+                    let _val = self.generate_expr(&expr);
 
                     // For debugging - print the result
-                    if let Some(ref v) = val {
-                        self.generate_print_call(v, &expr.ty);
+                    // if let Some(ref v) = val {
+                    //     self.generate_print_call(v, &expr.ty);
 
-                        // Track managed values for cleanup
-                        if self.is_managed_type(&expr.ty) {
-                            if let Value::Register(reg) = v {
-                                managed_vars.push(reg.clone());
-                            }
-                        }
-                    }
+                    //     // Track managed values for cleanup
+                    //     if self.is_managed_type(&expr.ty) {
+                    //         if let Value::Register(reg) = v {
+                    //             managed_vars.push(reg.clone());
+                    //         }
+                    //     }
+                    // }
                 }
             }
         }
@@ -354,27 +354,37 @@ impl IRBuilder {
         self.current_block = None;
     }
 
-    fn generate_print_call(&mut self, value: &Value, ty: &Arc<Type>) {
-        let format_str = match &**ty {
-            Type::Constructor { name, .. } if name == "int" => "%ld\n",
-            Type::Constructor { name, .. } if name == "bool" => "%s\n",
-            Type::Constructor { name, .. } if name == "float" => "%f\n",
-            _ => "%p\n",
-        };
+    // fn generate_print_call(&mut self, value: &Value, ty: &Arc<Type>) {
+    //     let format_str = match &**ty {
+    //         Type::Constructor { name, .. } if name == "int" => "%ld\n",
+    //         Type::Constructor { name, .. } if name == "bool" => "%s\n",
+    //         Type::Constructor { name, .. } if name == "float" => "%f\n",
+    //         Type::Constructor { name, .. } if name == "string" => {
+    //             self.add_instruction(Instruction::Call {
+    //                 dest: None,
+    //                 func: Value::Global("print_internal".into()),
+    //                 args: vec![value.clone()],
+    //                 ty: IRType::Void,
+    //                 span: 0..0,
+    //             });
+    //             return;
+    //         }
+    //         _ => "%p\n",
+    //     };
 
-        let format_global = format!("fmt_{}", self.module.global_strings.len());
-        self.module
-            .global_strings
-            .insert(format_global.clone(), format_str.to_string());
+    //     let format_global = format!("fmt_{}", self.module.global_strings.len());
+    //     self.module
+    //         .global_strings
+    //         .insert(format_global.clone(), format_str.to_string());
 
-        self.add_instruction(Instruction::Call {
-            dest: None,
-            func: Value::Global("printf".to_string()),
-            args: vec![Value::Global(format_global), value.clone()],
-            ty: IRType::I32,
-            span: 0..0,
-        });
-    }
+    //     self.add_instruction(Instruction::Call {
+    //         dest: None,
+    //         func: Value::Global("printf".to_string()),
+    //         args: vec![Value::Global(format_global), value.clone()],
+    //         ty: IRType::I32,
+    //         span: 0..0,
+    //     });
+    // }
 
     fn generate_expr(&mut self, expr: &TypedExpr) -> Option<Value> {
         match &expr.kind {
@@ -414,19 +424,12 @@ impl IRBuilder {
                 Some(val)
             }
 
-            // Variable access - retain if it's managed
             TypedExprKind::Variable(name) => {
-                // Fix borrow checker issue by cloning the value first
                 let value = self.symbol_table.get(name).cloned();
 
                 if let Some(val) = value {
-                    if self.is_managed_type(&expr.ty) {
-                        // Retain the value when accessing it
-                        self.add_instruction(Instruction::Retain {
-                            ptr: val.clone(),
-                            span: expr.range.clone(),
-                        });
-                    }
+                    // Don't automatically retain on variable access
+                    // The caller (assignment, function call, etc.) handles RC
                     Some(val)
                 } else {
                     Some(Value::Global(name.clone()))
@@ -822,56 +825,50 @@ impl IRBuilder {
         // Clear symbol table for this function
         self.symbol_table.clear();
 
-        // Track managed parameters for cleanup
-        let mut managed_params = Vec::new();
-
-        // Add function parameters to symbol table
-        for (param_name, param_ty, _) in &func.args {
+        // Add function parameters to symbol table (NO RETAINS at entry)
+        for (param_name, _param_ty, _) in &func.args {
             let param_value = Value::Argument(param_name.clone());
             self.symbol_table.insert(param_name.clone(), param_value);
-
-            if self.is_managed_type(param_ty) {
-                managed_params.push(param_name.clone());
-            }
         }
 
         // Generate IR for function body
         let body_value = self.generate_expr(&func.body.0);
 
-        // Clean up managed parameters before return (except return value)
-        for param in managed_params {
-            if let Some(param_val) = self.symbol_table.get(&param) {
-                // Don't release if this parameter is being returned
-                let should_release = match &body_value {
-                    Some(Value::Argument(arg_name)) => arg_name != &param,
-                    _ => true,
-                };
+        // Handle return value RC correctly
+        if let Some(ret_val) = body_value {
+            // Check if we're returning a parameter directly
+            let is_returning_parameter = match &ret_val {
+                Value::Argument(_) => true,
+                _ => false,
+            };
 
-                if should_release {
-                    self.add_instruction(Instruction::Release {
-                        ptr: param_val.clone(),
-                        span: 0..0,
+            if self.is_managed_type(&func.return_type.0) {
+                if is_returning_parameter {
+                    // When returning a parameter directly, just retain once
+                    self.add_instruction(Instruction::Retain {
+                        ptr: ret_val.clone(),
+                        span: func.body.1.clone(),
                     });
+                } else {
+                    // When returning a newly created value, it already has RC=1
+                    // No additional retain needed
                 }
             }
-        }
 
-        // Retain return value if it's managed
-        if let Some(ref ret_val) = body_value {
-            if self.is_managed_type(&func.return_type.0) {
-                self.add_instruction(Instruction::Retain {
-                    ptr: ret_val.clone(),
-                    span: func.body.1.clone(),
-                });
-            }
+            // Return the value
+            let ret_terminator = Terminator::Ret {
+                value: Some(ret_val),
+                span: func.body.1.clone(),
+            };
+            self.set_terminator(ret_terminator);
+        } else {
+            // Void return
+            let ret_terminator = Terminator::Ret {
+                value: None,
+                span: func.body.1.clone(),
+            };
+            self.set_terminator(ret_terminator);
         }
-
-        // Add return instruction with the actual body value
-        let ret_terminator = Terminator::Ret {
-            value: body_value,
-            span: func.body.1.clone(),
-        };
-        self.set_terminator(ret_terminator);
 
         self.current_function = None;
         self.current_block = None;

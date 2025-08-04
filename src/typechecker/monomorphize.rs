@@ -74,6 +74,8 @@ impl TypeEnv<'_> {
     /// Properly monomorphizes the AST with correct order and type replacement
     pub fn monomorphize_ast(&mut self, ast: Vec<TypedASTNode>) -> Vec<TypedASTNode> {
         // First pass: collect all generic functions
+        println!("DEBUG: Starting monomorphization with {} nodes", ast.len());
+
         let mut generic_fns = HashMap::new();
         let mut generic_structs = HashMap::new();
 
@@ -82,6 +84,14 @@ impl TypeEnv<'_> {
         for node in ast {
             match node {
                 TypedASTNode::Function((func, ref span)) if func.is_generic() => {
+                    println!(
+                        "DEBUG: Found generic function: {} with signature: {:?}",
+                        func.name,
+                        func.args
+                            .iter()
+                            .map(|(n, t, _)| (n, type_string(t)))
+                            .collect::<Vec<_>>()
+                    );
                     generic_fns.insert(func.name.clone(), (func, span.clone()));
                 }
                 TypedASTNode::Struct((strukt, ref span)) if !strukt.generics.is_empty() => {
@@ -90,6 +100,9 @@ impl TypeEnv<'_> {
                 _ => non_generic_nodes.push(node),
             }
         }
+
+        println!("DEBUG: Found {} generic functions", generic_fns.len());
+        println!("DEBUG: Non-generic nodes: {}", non_generic_nodes.len());
 
         // Second pass: process nodes and specialize functions
         let mut specialized_fns = HashMap::new();
@@ -105,6 +118,11 @@ impl TypeEnv<'_> {
             ));
         }
 
+        println!(
+            "DEBUG: Generated {} specialized functions",
+            specialized_fns.len()
+        );
+
         // Third pass: add specialized functions to the beginning of the AST
         let mut result = Vec::new();
         for (_, (strukt, span)) in specialized_structs {
@@ -114,6 +132,7 @@ impl TypeEnv<'_> {
             result.push(TypedASTNode::Function((func, span)));
         }
         result.extend(processed_nodes);
+        println!("DEBUG: Returning {} total nodes", result.len());
         result
     }
 
@@ -253,7 +272,151 @@ impl TypeEnv<'_> {
                     range: expr.range,
                 }
             }
-            // ... handle other expression types ...
+            TypedExprKind::Let { var, value } => {
+                let processed_value =
+                    self.process_expr(*value, generic_fns, specialized_fns, specialized_structs);
+                TypedExpr {
+                    kind: TypedExprKind::Let {
+                        var,
+                        value: Box::new(processed_value),
+                    },
+                    ty: expr.ty,
+                    range: expr.range,
+                }
+            }
+
+            TypedExprKind::BinOp {
+                operator,
+                l_value,
+                r_value,
+            } => {
+                let processed_l =
+                    self.process_expr(*l_value, generic_fns, specialized_fns, specialized_structs);
+                let processed_r =
+                    self.process_expr(*r_value, generic_fns, specialized_fns, specialized_structs);
+                TypedExpr {
+                    kind: TypedExprKind::BinOp {
+                        operator,
+                        l_value: Box::new(processed_l),
+                        r_value: Box::new(processed_r),
+                    },
+                    ty: expr.ty,
+                    range: expr.range,
+                }
+            }
+
+            TypedExprKind::IfElse {
+                condition,
+                if_branch,
+                else_branch,
+            } => {
+                let processed_cond = self.process_expr(
+                    *condition,
+                    generic_fns,
+                    specialized_fns,
+                    specialized_structs,
+                );
+                let processed_if = self.process_expr(
+                    *if_branch,
+                    generic_fns,
+                    specialized_fns,
+                    specialized_structs,
+                );
+                let processed_else = else_branch.map(|b| {
+                    Box::new(self.process_expr(
+                        *b,
+                        generic_fns,
+                        specialized_fns,
+                        specialized_structs,
+                    ))
+                });
+                TypedExpr {
+                    kind: TypedExprKind::IfElse {
+                        condition: Box::new(processed_cond),
+                        if_branch: Box::new(processed_if),
+                        else_branch: processed_else,
+                    },
+                    ty: expr.ty,
+                    range: expr.range,
+                }
+            }
+            TypedExprKind::Do { expressions } => {
+                let processed_exprs = expressions
+                    .into_iter()
+                    .map(|e| {
+                        self.process_expr(e, generic_fns, specialized_fns, specialized_structs)
+                    })
+                    .collect();
+                TypedExpr {
+                    kind: TypedExprKind::Do {
+                        expressions: processed_exprs,
+                    },
+                    ty: expr.ty,
+                    range: expr.range,
+                }
+            }
+
+            TypedExprKind::Array { elements } => {
+                let processed_elements = elements
+                    .into_iter()
+                    .map(|e| {
+                        self.process_expr(e, generic_fns, specialized_fns, specialized_structs)
+                    })
+                    .collect();
+                TypedExpr {
+                    kind: TypedExprKind::Array {
+                        elements: processed_elements,
+                    },
+                    ty: expr.ty,
+                    range: expr.range,
+                }
+            }
+
+            TypedExprKind::Index { array, index } => {
+                let processed_array =
+                    self.process_expr(*array, generic_fns, specialized_fns, specialized_structs);
+                let processed_index =
+                    self.process_expr(*index, generic_fns, specialized_fns, specialized_structs);
+                TypedExpr {
+                    kind: TypedExprKind::Index {
+                        array: Box::new(processed_array),
+                        index: Box::new(processed_index),
+                    },
+                    ty: expr.ty,
+                    range: expr.range,
+                }
+            }
+
+            TypedExprKind::Tuple(elements) => {
+                let processed_elements = elements
+                    .into_iter()
+                    .map(|e| {
+                        self.process_expr(e, generic_fns, specialized_fns, specialized_structs)
+                    })
+                    .collect();
+                TypedExpr {
+                    kind: TypedExprKind::Tuple(processed_elements),
+                    ty: expr.ty,
+                    range: expr.range,
+                }
+            }
+
+            TypedExprKind::Lambda { args, expression } => {
+                let processed_body = self.process_expr(
+                    *expression,
+                    generic_fns,
+                    specialized_fns,
+                    specialized_structs,
+                );
+                TypedExpr {
+                    kind: TypedExprKind::Lambda {
+                        args,
+                        expression: Box::new(processed_body),
+                    },
+                    ty: expr.ty,
+                    range: expr.range,
+                }
+            }
             _ => expr,
         }
     }
@@ -387,7 +550,7 @@ impl TypeEnv<'_> {
     }
 
     fn specialize_function_at_call(
-        &mut self, // Changed to mutable
+        &mut self,
         func: &TypedFunction,
         args: &[TypedExpr],
     ) -> TypedFunction {
@@ -402,40 +565,53 @@ impl TypeEnv<'_> {
             }
         }
 
-        // Apply type mapping to function signature with RESOLUTION
+        // ALSO map the return type variable to concrete type
+        if let Type::Variable(ret_id) = &*func.return_type.0 {
+            // Use the body's resolved type or first arg's type for identity functions
+            if !args.is_empty() {
+                let concrete_return = self.resolve_deep(args[0].ty.clone());
+                type_map.insert(*ret_id, concrete_return);
+            }
+        }
+
+        // Apply substitution to create concrete types
         specialized.args = func
             .args
             .iter()
             .map(|(name, ty, span)| {
-                let substituted = self.substitute_type(ty, &type_map);
-                let resolved = self.resolve_deep(substituted); // RESOLVE AFTER SUBSTITUTION
-                (name.clone(), resolved, span.clone())
+                let concrete_ty = self.substitute_type(ty, &type_map);
+                (name.clone(), concrete_ty, span.clone())
             })
             .collect();
 
-        // RESOLVE RETURN TYPE
-        let return_type = self.resolve_deep(self.substitute_type(&func.return_type.0, &type_map));
-        specialized.return_type.0 = return_type.clone();
+        let concrete_return = self.substitute_type(&func.return_type.0, &type_map);
+        specialized.return_type.0 = concrete_return.clone();
 
-        // Generate unique name based on CONCRETE TYPES
+        // Generate name based on CONCRETE types
         let arg_types: Vec<String> = specialized
             .args
             .iter()
             .map(|(_, ty, _)| type_signature_string(ty))
             .collect();
-
-        // println!("{:?}", specialized.args);
-
-        let return_str = type_signature_string(&return_type);
+        let return_str = type_signature_string(&concrete_return);
         let signature = format!("{}_{}_to_{}", func.name, arg_types.join("_"), return_str);
-        let spec_name = sanitize_identifier(&signature);
-        specialized.name = spec_name;
+        specialized.name = sanitize_identifier(&signature);
 
-        // Apply substitution and RESOLUTION to function body
+        // Substitute types in body
         let (body_expr, body_span) = *func.body.clone();
         let substituted_body = self.substitute_in_expr(body_expr, &type_map);
-        let resolved_body = self.resolve_expr(substituted_body); // RESOLVE BODY
-        specialized.body = Box::new((resolved_body, body_span));
+        specialized.body = Box::new((substituted_body, body_span));
+
+        println!(
+            "DEBUG: Specialized {} to {} with args: {:?}",
+            func.name,
+            specialized.name,
+            specialized
+                .args
+                .iter()
+                .map(|(n, t, _)| (n, type_string(t)))
+                .collect::<Vec<_>>()
+        );
 
         specialized
     }
@@ -525,36 +701,32 @@ impl TypeEnv<'_> {
                 })
             }
 
-            // Other types get normal resolution
-            _ => match &*resolved {
-                Type::Variable(_) => resolved,
-                Type::Constructor {
-                    name,
-                    generics,
-                    traits,
-                } => {
-                    let resolved_generics = generics
-                        .iter()
-                        .map(|t| self.resolve_deep(t.clone()))
-                        .collect();
-                    Arc::new(Type::Constructor {
-                        name: name.clone(),
-                        generics: resolved_generics,
-                        traits: traits.clone(),
-                    })
-                }
-                Type::Tuple(types) => {
-                    let resolved_types =
-                        types.iter().map(|t| self.resolve_deep(t.clone())).collect();
-                    Arc::new(Type::Tuple(resolved_types))
-                }
-                Type::Union(types) => {
-                    let resolved_types =
-                        types.iter().map(|t| self.resolve_deep(t.clone())).collect();
-                    Arc::new(Type::Union(resolved_types))
-                }
-                _ => resolved,
-            },
+            Type::Variable(_) => resolved,
+
+            Type::Constructor {
+                name,
+                generics,
+                traits,
+            } => {
+                let resolved_generics = generics
+                    .iter()
+                    .map(|t| self.resolve_deep(t.clone()))
+                    .collect();
+                Arc::new(Type::Constructor {
+                    name: name.clone(),
+                    generics: resolved_generics,
+                    traits: traits.clone(),
+                })
+            }
+            Type::Tuple(types) => {
+                let resolved_types = types.iter().map(|t| self.resolve_deep(t.clone())).collect();
+                Arc::new(Type::Tuple(resolved_types))
+            }
+            Type::Union(types) => {
+                let resolved_types = types.iter().map(|t| self.resolve_deep(t.clone())).collect();
+                Arc::new(Type::Union(resolved_types))
+            }
+            _ => resolved,
         }
     }
 }

@@ -1,4 +1,3 @@
-// src/ir/builder.rs
 use super::*;
 use crate::ast::{
     BinOp, Type, TypedASTNode, TypedExpr, TypedExprKind, TypedExtern, TypedFunction, TypedStruct,
@@ -14,7 +13,6 @@ pub struct IRBuilder {
     register_counter: usize,
     label_counter: usize,
     symbol_table: HashMap<String, Value>,
-    _enum_types: HashMap<String, IRType>,
 }
 
 impl IRBuilder {
@@ -31,7 +29,6 @@ impl IRBuilder {
             register_counter: 0,
             label_counter: 0,
             symbol_table: HashMap::new(),
-            _enum_types: HashMap::new(),
         };
 
         builder.add_standard_library();
@@ -42,92 +39,25 @@ impl IRBuilder {
         // printf
         self.module.functions.push(Function {
             name: "printf".to_string(),
-            params: vec![
-                ("format".to_string(), IRType::Ptr), // Format string
-                                                     // Variadic args handled specially in LLVM codegen
-            ],
+            params: vec![("format".to_string(), IRType::Ptr)],
             return_type: IRType::I32,
             blocks: Vec::new(),
             is_external: true,
         });
 
-        // malloc
+        // Boehm GC functions
         self.module.functions.push(Function {
-            name: "malloc".to_string(),
+            name: "GC_malloc".to_string(),
             params: vec![("size".to_string(), IRType::I64)],
-            return_type: IRType::ManagedPtr,
-            blocks: Vec::new(),
-            is_external: true,
-        });
-
-        // free
-        self.module.functions.push(Function {
-            name: "free".to_string(),
-            params: vec![("ptr".to_string(), IRType::ManagedPtr)],
-            return_type: IRType::Void,
-            blocks: Vec::new(),
-            is_external: true,
-        });
-
-        // RC runtime functions
-        self.module.functions.push(Function {
-            name: "gc_retain".to_string(),
-            params: vec![("ptr".to_string(), IRType::ManagedPtr)],
-            return_type: IRType::Void,
+            return_type: IRType::Ptr,
             blocks: Vec::new(),
             is_external: true,
         });
 
         self.module.functions.push(Function {
-            name: "gc_alloc".to_string(),
-            params: vec![
-                ("size".to_string(), IRType::I64),
-                ("type_id".to_string(), IRType::I32),
-            ],
-            return_type: IRType::ManagedPtr,
-            blocks: Vec::new(),
-            is_external: true,
-        });
-
-        self.module.functions.push(Function {
-            name: "gc_release".to_string(),
-            params: vec![("ptr".to_string(), IRType::ManagedPtr)],
-            return_type: IRType::Void,
-            blocks: Vec::new(),
-            is_external: true,
-        });
-
-        // Array operations
-        self.module.functions.push(Function {
-            name: "gc_array_new".to_string(),
-            params: vec![
-                ("element_type".to_string(), IRType::I32), // Type ID
-                ("length".to_string(), IRType::I64),
-            ],
-            return_type: IRType::ManagedPtr,
-            blocks: Vec::new(),
-            is_external: true,
-        });
-
-        self.module.functions.push(Function {
-            name: "gc_array_get".to_string(),
-            params: vec![
-                ("array".to_string(), IRType::ManagedPtr),
-                ("index".to_string(), IRType::I64),
-            ],
-            return_type: IRType::ManagedPtr, // Generic pointer - will be casted
-            blocks: Vec::new(),
-            is_external: true,
-        });
-
-        self.module.functions.push(Function {
-            name: "gc_array_set".to_string(),
-            params: vec![
-                ("array".to_string(), IRType::ManagedPtr),
-                ("index".to_string(), IRType::I64),
-                ("value".to_string(), IRType::ManagedPtr),
-            ],
-            return_type: IRType::Void,
+            name: "GC_malloc_atomic".to_string(),
+            params: vec![("size".to_string(), IRType::I64)],
+            return_type: IRType::Ptr,
             blocks: Vec::new(),
             is_external: true,
         });
@@ -136,10 +66,65 @@ impl IRBuilder {
         self.module.functions.push(Function {
             name: "string_concat".to_string(),
             params: vec![
-                ("left".to_string(), IRType::ManagedPtr),
-                ("right".to_string(), IRType::ManagedPtr),
+                ("left".to_string(), IRType::Ptr),
+                ("right".to_string(), IRType::Ptr),
             ],
-            return_type: IRType::ManagedPtr,
+            return_type: IRType::Ptr,
+            blocks: Vec::new(),
+            is_external: true,
+        });
+
+        self.module.functions.push(Function {
+            name: "string_length".to_string(),
+            params: vec![("str".to_string(), IRType::Ptr)],
+            return_type: IRType::I64,
+            blocks: Vec::new(),
+            is_external: true,
+        });
+
+        // Array operations
+        self.module.functions.push(Function {
+            name: "array_new".to_string(),
+            params: vec![
+                ("element_size".to_string(), IRType::I64),
+                ("length".to_string(), IRType::I64),
+            ],
+            return_type: IRType::Ptr,
+            blocks: Vec::new(),
+            is_external: true,
+        });
+
+        self.module.functions.push(Function {
+            name: "array_set".to_string(),
+            params: vec![
+                ("array".to_string(), IRType::Ptr),
+                ("index".to_string(), IRType::I64),
+                ("value".to_string(), IRType::I64),
+            ],
+            return_type: IRType::Void,
+            blocks: Vec::new(),
+            is_external: true,
+        });
+
+        self.module.functions.push(Function {
+            name: "array_get".to_string(),
+            params: vec![
+                ("array".to_string(), IRType::Ptr),
+                ("index".to_string(), IRType::I64),
+            ],
+            return_type: IRType::Ptr,
+            blocks: Vec::new(),
+            is_external: true,
+        });
+
+        self.module.functions.push(Function {
+            name: "array_set".to_string(),
+            params: vec![
+                ("array".to_string(), IRType::Ptr),
+                ("index".to_string(), IRType::I64),
+                ("value".to_string(), IRType::Ptr),
+            ],
+            return_type: IRType::Void,
             blocks: Vec::new(),
             is_external: true,
         });
@@ -147,19 +132,28 @@ impl IRBuilder {
         self.module.functions.push(Function {
             name: "array_concat".to_string(),
             params: vec![
-                ("left".to_string(), IRType::ManagedPtr),
-                ("right".to_string(), IRType::ManagedPtr),
-                ("element_type".to_string(), IRType::I32), // Type ID
+                ("left".to_string(), IRType::Ptr),
+                ("right".to_string(), IRType::Ptr),
+                ("element_size".to_string(), IRType::I64),
             ],
-            return_type: IRType::ManagedPtr,
+            return_type: IRType::Ptr,
             blocks: Vec::new(),
             is_external: true,
         });
 
         self.module.functions.push(Function {
+            name: "array_length".to_string(),
+            params: vec![("arr".to_string(), IRType::Ptr)],
+            return_type: IRType::I64,
+            blocks: Vec::new(),
+            is_external: true,
+        });
+
+        // Type conversion functions
+        self.module.functions.push(Function {
             name: "int_to_string".to_string(),
             params: vec![("value".to_string(), IRType::I64)],
-            return_type: IRType::ManagedPtr,
+            return_type: IRType::Ptr,
             blocks: Vec::new(),
             is_external: true,
         });
@@ -167,7 +161,7 @@ impl IRBuilder {
         self.module.functions.push(Function {
             name: "float_to_string".to_string(),
             params: vec![("value".to_string(), IRType::F64)],
-            return_type: IRType::ManagedPtr,
+            return_type: IRType::Ptr,
             blocks: Vec::new(),
             is_external: true,
         });
@@ -175,39 +169,15 @@ impl IRBuilder {
         self.module.functions.push(Function {
             name: "bool_to_string".to_string(),
             params: vec![("value".to_string(), IRType::I1)],
-            return_type: IRType::ManagedPtr,
-            blocks: Vec::new(),
-            is_external: true,
-        });
-
-        self.module.functions.push(Function {
-            name: "char_to_string".to_string(),
-            params: vec![("value".to_string(), IRType::I8)],
-            return_type: IRType::ManagedPtr,
+            return_type: IRType::Ptr,
             blocks: Vec::new(),
             is_external: true,
         });
 
         self.module.functions.push(Function {
             name: "print_internal".to_string(),
-            params: vec![("message".to_string(), IRType::ManagedPtr)],
+            params: vec![("message".to_string(), IRType::Ptr)],
             return_type: IRType::Void,
-            blocks: Vec::new(),
-            is_external: true,
-        });
-
-        self.module.functions.push(Function {
-            name: "string_length".to_string(),
-            params: vec![("str".to_string(), IRType::ManagedPtr)],
-            return_type: IRType::I64,
-            blocks: Vec::new(),
-            is_external: true,
-        });
-
-        self.module.functions.push(Function {
-            name: "array_length".to_string(),
-            params: vec![("arr".to_string(), IRType::ManagedPtr)],
-            return_type: IRType::I64,
             blocks: Vec::new(),
             is_external: true,
         });
@@ -254,17 +224,17 @@ impl IRBuilder {
         let param_types: Vec<IRType> = extern_func
             .args
             .iter()
-            .map(|(ty, _)| convert_ast_type_to_ir(ty)) // Extract type from (Arc<Type>, Range<usize>)
+            .map(|(ty, _)| convert_ast_type_to_ir(ty))
             .collect();
 
-        let return_type = convert_ast_type_to_ir(&extern_func.return_type.0); // Extract type from tuple
+        let return_type = convert_ast_type_to_ir(&extern_func.return_type.0);
 
         let ir_function = Function {
             name: extern_func.name.clone(),
             params: extern_func
                 .args
                 .iter()
-                .enumerate() // Generate parameter names since extern funcs don't have them
+                .enumerate()
                 .zip(param_types.iter())
                 .map(|((i, _), ir_ty)| (format!("arg{}", i), ir_ty.clone()))
                 .collect(),
@@ -277,7 +247,6 @@ impl IRBuilder {
     }
 
     fn generate_main_function(&mut self, expressions: Vec<(TypedExpr, Range<usize>)>) {
-        // Create main function signature
         let main_function = Function {
             name: "main".to_string(),
             params: vec![],
@@ -290,58 +259,23 @@ impl IRBuilder {
         let func_idx = self.module.functions.len() - 1;
         self.current_function = Some(func_idx);
 
-        // Create entry block
         let entry_block_idx = self.create_block("entry".to_string());
         self.set_current_block(entry_block_idx);
 
-        // Clear symbol table for main function
         self.symbol_table.clear();
-
-        // Track managed variables for cleanup
-        let mut managed_vars = Vec::new();
 
         // Generate IR for each top-level expression
         for (expr, _) in expressions {
             match &expr.kind {
-                // Handle variable assignments specially
                 TypedExprKind::Let { var, value, .. } => {
                     if let Some(val) = self.generate_expr(value) {
-                        // Store the variable in symbol table
-                        self.symbol_table.insert(var.clone(), val.clone());
-
-                        // Track for cleanup if it's managed
-                        if self.is_managed_type(&value.ty) {
-                            if let Value::Register(reg) = &val {
-                                managed_vars.push(reg.clone());
-                            }
-                        }
+                        self.symbol_table.insert(var.clone(), val);
                     }
                 }
-                // Handle other expressions (like function calls)
                 _ => {
                     let _val = self.generate_expr(&expr);
-
-                    // For debugging - print the result
-                    // if let Some(ref v) = val {
-                    //     self.generate_print_call(v, &expr.ty);
-
-                    //     // Track managed values for cleanup
-                    //     if self.is_managed_type(&expr.ty) {
-                    //         if let Value::Register(reg) = v {
-                    //             managed_vars.push(reg.clone());
-                    //         }
-                    //     }
-                    // }
                 }
             }
-        }
-
-        // Clean up managed variables before return
-        for var in managed_vars {
-            self.add_instruction(Instruction::Release {
-                ptr: Value::Register(var),
-                span: 0..0,
-            });
         }
 
         // Return 0 from main
@@ -354,48 +288,15 @@ impl IRBuilder {
         self.current_block = None;
     }
 
-    // fn generate_print_call(&mut self, value: &Value, ty: &Arc<Type>) {
-    //     let format_str = match &**ty {
-    //         Type::Constructor { name, .. } if name == "int" => "%ld\n",
-    //         Type::Constructor { name, .. } if name == "bool" => "%s\n",
-    //         Type::Constructor { name, .. } if name == "float" => "%f\n",
-    //         Type::Constructor { name, .. } if name == "string" => {
-    //             self.add_instruction(Instruction::Call {
-    //                 dest: None,
-    //                 func: Value::Global("print_internal".into()),
-    //                 args: vec![value.clone()],
-    //                 ty: IRType::Void,
-    //                 span: 0..0,
-    //             });
-    //             return;
-    //         }
-    //         _ => "%p\n",
-    //     };
-
-    //     let format_global = format!("fmt_{}", self.module.global_strings.len());
-    //     self.module
-    //         .global_strings
-    //         .insert(format_global.clone(), format_str.to_string());
-
-    //     self.add_instruction(Instruction::Call {
-    //         dest: None,
-    //         func: Value::Global("printf".to_string()),
-    //         args: vec![Value::Global(format_global), value.clone()],
-    //         ty: IRType::I32,
-    //         span: 0..0,
-    //     });
-    // }
-
     fn generate_expr(&mut self, expr: &TypedExpr) -> Option<Value> {
         match &expr.kind {
-            // Stack-allocated primitives (no RC needed)
+            // Stack-allocated primitives
             TypedExprKind::Int(val) => Some(Value::Constant(Constant::Int(*val))),
             TypedExprKind::Bool(val) => Some(Value::Constant(Constant::Bool(*val))),
             TypedExprKind::Float(val) => Some(Value::Constant(Constant::Float(*val))),
 
-            // Heap-allocated string (needs RC)
+            // Heap-allocated string
             TypedExprKind::String(s) => {
-                // Always create managed strings, never globals
                 let result_reg = self.new_register();
 
                 // Calculate size: sizeof(size_t) + string length + null terminator
@@ -408,7 +309,6 @@ impl IRBuilder {
                     span: expr.range.clone(),
                 });
 
-                // Initialize the string content
                 self.add_instruction(Instruction::StringInit {
                     dest: result_reg.clone(),
                     content: s.clone(),
@@ -426,10 +326,7 @@ impl IRBuilder {
 
             TypedExprKind::Variable(name) => {
                 let value = self.symbol_table.get(name).cloned();
-
                 if let Some(val) = value {
-                    // Don't automatically retain on variable access
-                    // The caller (assignment, function call, etc.) handles RC
                     Some(val)
                 } else {
                     Some(Value::Global(name.clone()))
@@ -461,7 +358,6 @@ impl IRBuilder {
                                     span: expr.range.clone(),
                                 }
                             }
-
                             // Array concatenation
                             (
                                 Type::Constructor {
@@ -488,18 +384,14 @@ impl IRBuilder {
                                 },
                                 span: expr.range.clone(),
                             },
-
-                            // Numeric addition (your existing logic)
-                            _ => {
-                                let result_ty = convert_ast_type_to_ir(&expr.ty);
-                                Instruction::Add {
-                                    dest: result_reg.clone(),
-                                    lhs: left_val,
-                                    rhs: right_val,
-                                    ty: result_ty,
-                                    span: expr.range.clone(),
-                                }
-                            }
+                            // Numeric addition
+                            _ => Instruction::Add {
+                                dest: result_reg.clone(),
+                                lhs: left_val,
+                                rhs: right_val,
+                                ty: result_ty,
+                                span: expr.range.clone(),
+                            },
                         }
                     }
                     BinOp::Sub => Instruction::Sub {
@@ -565,7 +457,7 @@ impl IRBuilder {
                         rhs: right_val,
                         span: expr.range.clone(),
                     },
-                    _ => todo!(),
+                    _ => return None,
                 };
 
                 self.add_instruction(instruction);
@@ -579,10 +471,9 @@ impl IRBuilder {
             } => self.generate_if_else(condition, if_branch, else_branch.as_deref(), &expr.ty),
 
             TypedExprKind::Call { function, args } => {
-                // Handle function calls (including recursive calls)
                 let func_name = match &function.kind {
                     TypedExprKind::Variable(name) => name.clone(),
-                    _ => return None, // More complex function expressions not handled yet
+                    _ => return None,
                 };
 
                 let mut arg_vals = Vec::new();
@@ -610,12 +501,12 @@ impl IRBuilder {
                 dest.map(Value::Register)
             }
 
-            // Dynamic array creation (RC managed)
+            // Dynamic array creation
             TypedExprKind::Array { elements } => {
                 let result_reg = self.new_register();
 
                 // Create array
-                self.add_instruction(Instruction::GCArrayNew {
+                self.add_instruction(Instruction::ArrayNew {
                     dest: result_reg.clone(),
                     element_type: HeapObjectType::Array {
                         element_type: Box::new(HeapObjectType::Struct {
@@ -629,17 +520,13 @@ impl IRBuilder {
                     span: expr.range.clone(),
                 });
 
-                // Initialize elements with PROPER BOXING
+                // Initialize elements
                 for (i, element) in elements.iter().enumerate() {
                     if let Some(val) = self.generate_expr(element) {
-                        // Box primitive values
-                        let boxed_val =
-                            self.box_primitive_value(val, &element.ty, element.range.clone());
-
-                        self.add_instruction(Instruction::GCArraySet {
+                        self.add_instruction(Instruction::ArraySet {
                             array: Value::Register(result_reg.clone()),
                             index: Value::Constant(Constant::Int(i as i64)),
-                            value: boxed_val, // Now properly boxed
+                            value: val,
                             span: element.range.clone(),
                         });
                     }
@@ -655,15 +542,14 @@ impl IRBuilder {
             } => {
                 let result_reg = self.new_register();
 
-                // Generate field data if present
                 let variant_data = if fields.is_empty() {
-                    None // Unit variant like Color::Red
+                    None
                 } else if fields.len() == 1 {
                     self.generate_expr(&fields[0].1)
                 } else {
                     // Multiple fields - create tuple
                     let tuple_reg = self.new_register();
-                    self.add_instruction(Instruction::GCStructNew {
+                    self.add_instruction(Instruction::StructNew {
                         dest: tuple_reg.clone(),
                         struct_type: format!("{}_{}_tuple", enum_name, variant_name),
                         span: expr.range.clone(),
@@ -672,11 +558,11 @@ impl IRBuilder {
                     // Set tuple fields
                     for (i, field) in fields.iter().enumerate() {
                         if let Some(field_val) = self.generate_expr(&field.1) {
-                            self.add_instruction(Instruction::GCStructSet {
+                            self.add_instruction(Instruction::StructSet {
                                 object: Value::Register(tuple_reg.clone()),
                                 field: format!("field_{}", i),
                                 value: field_val,
-                                span: 0..0, // UHHHH ILL FIX IT LATER
+                                span: 0..0,
                             });
                         }
                     }
@@ -696,28 +582,20 @@ impl IRBuilder {
                 Some(Value::Register(result_reg))
             }
 
-            // Array indexing (RC aware)
+            // Array indexing
             TypedExprKind::Index { array, index } => {
                 let array_val = self.generate_expr(array)?;
                 let index_val = self.generate_expr(index)?;
-                let boxed_reg = self.new_register();
+                let result_reg = self.new_register();
 
-                // Get the boxed value from array
-                self.add_instruction(Instruction::GCArrayGet {
-                    dest: boxed_reg.clone(),
+                self.add_instruction(Instruction::ArrayGet {
+                    dest: result_reg.clone(),
                     array: array_val,
                     index: index_val,
                     span: expr.range.clone(),
                 });
 
-                // Unbox the value if it's a primitive type
-                let unboxed_val = self.unbox_primitive_value(
-                    Value::Register(boxed_reg),
-                    &expr.ty,
-                    expr.range.clone(),
-                );
-
-                Some(unboxed_val)
+                Some(Value::Register(result_reg))
             }
 
             TypedExprKind::StructAccess {
@@ -726,7 +604,7 @@ impl IRBuilder {
             } => {
                 let object_val = self.generate_expr(struct_val)?;
                 let result_reg = self.new_register();
-                self.add_instruction(Instruction::GCStructGet {
+                self.add_instruction(Instruction::StructGet {
                     dest: result_reg.clone(),
                     object: object_val,
                     field: field_name.clone(),
@@ -735,10 +613,7 @@ impl IRBuilder {
                 Some(Value::Register(result_reg))
             }
 
-            _ => {
-                // Placeholder for other expression types
-                None
-            }
+            _ => None,
         }
     }
 
@@ -749,15 +624,12 @@ impl IRBuilder {
         else_branch: Option<&TypedExpr>,
         result_ty: &Arc<Type>,
     ) -> Option<Value> {
-        // Generate condition
         let cond_val = self.generate_expr(condition)?;
 
-        // Create basic blocks
         let then_label = self.new_label("then");
         let else_label = self.new_label("else");
         let merge_label = self.new_label("merge");
 
-        // Conditional branch
         self.set_terminator(Terminator::CondBr {
             cond: cond_val,
             then_label: then_label.clone(),
@@ -807,7 +679,6 @@ impl IRBuilder {
     }
 
     fn generate_function_body(&mut self, func: &TypedFunction) {
-        // Find the function in our module
         let func_idx = self
             .module
             .functions
@@ -817,15 +688,13 @@ impl IRBuilder {
 
         self.current_function = Some(func_idx);
 
-        // Create entry block
         let entry_label = "entry".to_string();
         let entry_block_idx = self.create_block(entry_label);
         self.set_current_block(entry_block_idx);
 
-        // Clear symbol table for this function
         self.symbol_table.clear();
 
-        // Add function parameters to symbol table (NO RETAINS at entry)
+        // Add function parameters to symbol table
         for (param_name, _param_ty, _) in &func.args {
             let param_value = Value::Argument(param_name.clone());
             self.symbol_table.insert(param_name.clone(), param_value);
@@ -834,35 +703,14 @@ impl IRBuilder {
         // Generate IR for function body
         let body_value = self.generate_expr(&func.body.0);
 
-        // Handle return value RC correctly
+        // Return the value
         if let Some(ret_val) = body_value {
-            // Check if we're returning a parameter directly
-            let is_returning_parameter = match &ret_val {
-                Value::Argument(_) => true,
-                _ => false,
-            };
-
-            if self.is_managed_type(&func.return_type.0) {
-                if is_returning_parameter {
-                    // When returning a parameter directly, just retain once
-                    self.add_instruction(Instruction::Retain {
-                        ptr: ret_val.clone(),
-                        span: func.body.1.clone(),
-                    });
-                } else {
-                    // When returning a newly created value, it already has RC=1
-                    // No additional retain needed
-                }
-            }
-
-            // Return the value
             let ret_terminator = Terminator::Ret {
                 value: Some(ret_val),
                 span: func.body.1.clone(),
             };
             self.set_terminator(ret_terminator);
         } else {
-            // Void return
             let ret_terminator = Terminator::Ret {
                 value: None,
                 span: func.body.1.clone(),
@@ -872,114 +720,6 @@ impl IRBuilder {
 
         self.current_function = None;
         self.current_block = None;
-    }
-
-    fn box_primitive_value(&mut self, val: Value, ty: &Arc<Type>, span: Range<usize>) -> Value {
-        println!("DEBUG: Boxing primitive value of type: {:?}", ty);
-
-        if self.is_primitive_type(ty) {
-            let boxed_reg = self.new_register();
-
-            let (heap_obj_type, size, _type_id) = match &**ty {
-                Type::Constructor { name, .. } if name == "int" => (
-                    HeapObjectType::Struct {
-                        name: "boxed_int".to_string(),
-                        fields: vec![],
-                    },
-                    8,
-                    3,
-                ),
-                Type::Constructor { name, .. } if name == "float" => (
-                    HeapObjectType::Struct {
-                        name: "boxed_float".to_string(),
-                        fields: vec![],
-                    },
-                    8,
-                    4,
-                ),
-                Type::Constructor { name, .. } if name == "bool" => (
-                    HeapObjectType::Struct {
-                        name: "boxed_bool".to_string(),
-                        fields: vec![],
-                    },
-                    1,
-                    5,
-                ),
-                _ => (
-                    HeapObjectType::Struct {
-                        name: "boxed_unknown".to_string(),
-                        fields: vec![],
-                    },
-                    8,
-                    3,
-                ),
-            };
-
-            // Use GCAlloc instead of raw malloc
-            self.add_instruction(Instruction::GCAlloc {
-                dest: boxed_reg.clone(),
-                object_type: heap_obj_type,
-                size: Some(Value::Constant(Constant::Int(size))),
-                span: span.clone(),
-            });
-
-            // Store the primitive value in the box
-            self.add_instruction(Instruction::Store {
-                value: val,
-                ptr: Value::Register(boxed_reg.clone()),
-                ty: convert_ast_type_to_ir(ty),
-                span,
-            });
-
-            Value::Register(boxed_reg)
-        } else {
-            val // Already managed
-        }
-    }
-
-    fn is_primitive_type(&self, ty: &Arc<Type>) -> bool {
-        match &**ty {
-            Type::Constructor { name, .. } => {
-                matches!(name.as_str(), "int" | "float" | "bool" | "char")
-            }
-            _ => false,
-        }
-    }
-
-    // Helper methods for RC management
-    fn is_managed_type(&self, ty: &Arc<Type>) -> bool {
-        match &**ty {
-            Type::Constructor { name, .. } => match name.as_str() {
-                "int" | "float" | "bool" => false, // Primitives are stack-allocated
-                "string" => true,                  // Strings are heap-allocated
-                "List" => true,                    // Arrays (Lists) are managed
-                _ => true,                         // Assume user types are managed
-            },
-            Type::Tuple(_) => true, // Tuples containing managed types
-            _ => false,
-        }
-    }
-
-    fn unbox_primitive_value(
-        &mut self,
-        boxed_val: Value,
-        target_ty: &Arc<Type>,
-        span: Range<usize>,
-    ) -> Value {
-        if self.is_primitive_type(target_ty) {
-            let unboxed_reg = self.new_register();
-
-            self.add_instruction(Instruction::Unbox {
-                dest: unboxed_reg.clone(),
-                boxed_ptr: boxed_val,
-                primitive_type: convert_ast_type_to_ir(target_ty),
-                span,
-            });
-
-            Value::Register(unboxed_reg)
-        } else {
-            boxed_val // Already unboxed/managed
-        }
     }
 
     fn new_register(&mut self) -> String {
@@ -1081,9 +821,9 @@ fn convert_ast_type_to_ir(ty: &Arc<Type>) -> IRType {
             "bool" => IRType::I1,
             "int" => IRType::I64,
             "float" => IRType::F64,
-            "string" => IRType::ManagedPtr, // Now managed
-            "List" => IRType::ManagedPtr,   // Arrays are managed
-            _ => IRType::ManagedPtr,        // User types are managed
+            "string" => IRType::Ptr,
+            "List" => IRType::Ptr,
+            _ => IRType::Ptr,
         },
         Type::Function {
             params,
@@ -1092,8 +832,8 @@ fn convert_ast_type_to_ir(ty: &Arc<Type>) -> IRType {
             params: params.iter().map(convert_ast_type_to_ir).collect(),
             return_type: Box::new(convert_ast_type_to_ir(return_type)),
         },
-        Type::Tuple(_) => IRType::ManagedPtr, // Tuples are managed
-        _ => IRType::ManagedPtr,              // Default to managed
+        Type::Tuple(_) => IRType::Ptr,
+        _ => IRType::Ptr,
     }
 }
 
@@ -1104,9 +844,8 @@ fn infer_heap_object_type(ty: &Arc<Type>) -> HeapObjectType {
                 name: "int".to_string(),
                 fields: vec![],
             },
-            "string" => HeapObjectType::String { len: 0 }, // Runtime determined
+            "string" => HeapObjectType::String { len: 0 },
             "List" => {
-                // Handle array/list types
                 let element_type = if let Some(elem_ty) = generics.first() {
                     Box::new(infer_heap_object_type(elem_ty))
                 } else {
@@ -1118,8 +857,8 @@ fn infer_heap_object_type(ty: &Arc<Type>) -> HeapObjectType {
 
                 HeapObjectType::Array {
                     element_type,
-                    len: 0,      // Dynamic
-                    capacity: 0, // Dynamic
+                    len: 0,
+                    capacity: 0,
                 }
             }
             _ => HeapObjectType::Struct {

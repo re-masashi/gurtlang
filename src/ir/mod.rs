@@ -1,32 +1,28 @@
-// src/ir/mod.rs
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::ops::Range;
 
 pub mod builder;
-// pub mod pretty_print;
 
-// pub use pretty_print::IRPrettyPrinter;
 pub use builder::IRBuilder;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IRType {
     Void,
-    I1,         // bool
-    I8,         // i forgor what i8 is. byte ig?
-    I32,        // int
-    I64,        // long
-    F64,        // float
-    Ptr,        // generic pointer
-    ManagedPtr, // GC-managed pointer for RC objects
+    I1,  // bool
+    I8,  // byte
+    I32, // int
+    I64, // long
+    F64, // float
+    Ptr, // generic pointer (GC-managed)
     Struct {
         name: String,
         fields: Vec<IRType>,
     },
     TaggedUnion {
         name: String,
-        tag_type: Box<IRType>,   // I8 or I32
-        max_variant_size: usize, // Size of largest variant
+        tag_type: Box<IRType>,
+        max_variant_size: usize,
         variants: Vec<TaggedVariant>,
     },
     Array {
@@ -42,8 +38,8 @@ pub enum IRType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TaggedVariant {
     pub name: String,
-    pub tag_value: u64,            // Discriminant value
-    pub data_type: Option<IRType>, // None for unit variants like Color::Red
+    pub tag_value: u64,
+    pub data_type: Option<IRType>,
 }
 
 #[derive(Debug, Clone)]
@@ -91,12 +87,6 @@ pub enum Instruction {
         value: Value,
         ptr: Value,
         ty: IRType,
-        span: Range<usize>,
-    },
-    Unbox {
-        dest: String,
-        boxed_ptr: Value,
-        primitive_type: IRType,
         span: Range<usize>,
     },
 
@@ -215,19 +205,26 @@ pub enum Instruction {
         span: Range<usize>,
     },
 
+    // GC allocation (simplified - just allocate)
+    GCAlloc {
+        dest: String,
+        object_type: HeapObjectType,
+        size: Option<Value>,
+        span: Range<usize>,
+    },
+
+    // String operations
     StringInit {
         dest: String,
         content: String,
         span: Range<usize>,
     },
-
     StringConcat {
         dest: String,
         left: Value,
         right: Value,
         span: Range<usize>,
     },
-
     StringLength {
         dest: String,
         string: Value,
@@ -242,90 +239,67 @@ pub enum Instruction {
         element_type: HeapObjectType,
         span: Range<usize>,
     },
-
     ArrayLength {
         dest: String,
         array: Value,
         span: Range<usize>,
     },
-
-    // Enum construction
-    EnumCreate {
-        dest: String,
-        enum_type: String,
-        variant_name: String,
-        variant_data: Option<Value>, // None for unit variants
-        span: Range<usize>,
-    },
-
-    // Pattern matching (gets the tag)
-    EnumGetTag {
-        dest: String,
-        enum_value: Value,
-        span: Range<usize>,
-    },
-
-    // Extract data from enum (unsafe - caller must check tag first)
-    EnumExtractData {
-        dest: String,
-        enum_value: Value,
-        variant_name: String,
-        expected_type: IRType,
-        span: Range<usize>,
-    },
-
-    // Reference counting operations
-    Retain {
-        ptr: Value,
-        span: Range<usize>,
-    },
-    Release {
-        ptr: Value,
-        span: Range<usize>,
-    },
-
-    // Managed allocations (automatically get RC=1)
-    GCAlloc {
-        dest: String,
-        object_type: HeapObjectType,
-        size: Option<Value>, // For dynamic sizing
-        span: Range<usize>,
-    },
-
-    // Specialized operations that handle RC automatically
-    GCArrayNew {
+    ArrayNew {
         dest: String,
         element_type: HeapObjectType,
         length: Value,
         span: Range<usize>,
     },
-    GCArrayGet {
+    ArrayGet {
         dest: String,
         array: Value,
         index: Value,
         span: Range<usize>,
     },
-    GCArraySet {
+    ArraySet {
         array: Value,
         index: Value,
         value: Value,
         span: Range<usize>,
     },
-    GCStructNew {
+
+    // Struct operations
+    StructNew {
         dest: String,
         struct_type: String,
         span: Range<usize>,
     },
-    GCStructGet {
+    StructGet {
         dest: String,
         object: Value,
         field: String,
         span: Range<usize>,
     },
-    GCStructSet {
+    StructSet {
         object: Value,
         field: String,
         value: Value,
+        span: Range<usize>,
+    },
+
+    // Enum operations
+    EnumCreate {
+        dest: String,
+        enum_type: String,
+        variant_name: String,
+        variant_data: Option<Value>,
+        span: Range<usize>,
+    },
+    EnumGetTag {
+        dest: String,
+        enum_value: Value,
+        span: Range<usize>,
+    },
+    EnumExtractData {
+        dest: String,
+        enum_value: Value,
+        variant_name: String,
+        expected_type: IRType,
         span: Range<usize>,
     },
 }
@@ -424,7 +398,8 @@ pub enum HeapObjectType {
     },
 }
 
-// Display implementation for HeapObjectType
+// Display implementations
+
 impl Display for HeapObjectType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -456,7 +431,6 @@ impl Display for HeapObjectType {
     }
 }
 
-// Display implementation for IRType
 impl Display for IRType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -493,13 +467,11 @@ impl Display for IRType {
                 }
                 write!(f, ")")
             }
-            IRType::ManagedPtr => write!(f, "managed ptr"),
-            IRType::TaggedUnion { .. } => todo!(),
+            IRType::TaggedUnion { .. } => write!(f, "tagged_union"),
         }
     }
 }
 
-// Display implementation for Value
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -511,7 +483,6 @@ impl Display for Value {
     }
 }
 
-// Display implementation for Constant
 impl Display for Constant {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -527,7 +498,6 @@ impl Display for Constant {
     }
 }
 
-// Display implementation for ICmpCond
 impl Display for ICmpCond {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let s = match self {
@@ -546,7 +516,6 @@ impl Display for ICmpCond {
     }
 }
 
-// Display implementation for FCmpCond
 impl Display for FCmpCond {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let s = match self {
@@ -571,7 +540,6 @@ impl Display for FCmpCond {
     }
 }
 
-// Display implementation for Instruction
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -583,14 +551,6 @@ impl Display for Instruction {
             }
             Instruction::Store { value, ptr, ty, .. } => {
                 write!(f, "  store {} {}, ptr {}", ty, value, ptr)
-            }
-            Instruction::Unbox {
-                dest,
-                boxed_ptr,
-                primitive_type,
-                ..
-            } => {
-                write!(f, "  {} = unbox {} -> {}", dest, boxed_ptr, primitive_type)
             }
             Instruction::Add {
                 dest, lhs, rhs, ty, ..
@@ -736,12 +696,6 @@ impl Display for Instruction {
             } => {
                 write!(f, "  {} = sext {} {} to {}", dest, from_ty, value, to_ty)
             }
-            Instruction::Retain { ptr, .. } => {
-                write!(f, "  retain {}", ptr)
-            }
-            Instruction::Release { ptr, .. } => {
-                write!(f, "  release {}", ptr)
-            }
             Instruction::GCAlloc {
                 dest,
                 object_type,
@@ -754,7 +708,7 @@ impl Display for Instruction {
                 }
                 Ok(())
             }
-            Instruction::GCArrayNew {
+            Instruction::ArrayNew {
                 dest,
                 element_type,
                 length,
@@ -762,43 +716,43 @@ impl Display for Instruction {
             } => {
                 write!(
                     f,
-                    "  {} = gc_array_new {}, length {}",
+                    "  {} = array_new {}, length {}",
                     dest, element_type, length
                 )
             }
-            Instruction::GCArrayGet {
+            Instruction::ArrayGet {
                 dest, array, index, ..
             } => {
-                write!(f, "  {} = gc_array_get {}, {}", dest, array, index)
+                write!(f, "  {} = array_get {}, {}", dest, array, index)
             }
-            Instruction::GCArraySet {
+            Instruction::ArraySet {
                 array,
                 index,
                 value,
                 ..
             } => {
-                write!(f, "  gc_array_set {}, {}, {}", array, index, value)
+                write!(f, "  array_set {}, {}, {}", array, index, value)
             }
-            Instruction::GCStructNew {
+            Instruction::StructNew {
                 dest, struct_type, ..
             } => {
-                write!(f, "  {} = gc_struct_new {}", dest, struct_type)
+                write!(f, "  {} = struct_new {}", dest, struct_type)
             }
-            Instruction::GCStructGet {
+            Instruction::StructGet {
                 dest,
                 object,
                 field,
                 ..
             } => {
-                write!(f, "  {} = gc_struct_get {}, {}", dest, object, field)
+                write!(f, "  {} = struct_get {}, {}", dest, object, field)
             }
-            Instruction::GCStructSet {
+            Instruction::StructSet {
                 object,
                 field,
                 value,
                 ..
             } => {
-                write!(f, "  gc_struct_set {}, {}, {}", object, field, value)
+                write!(f, "  struct_set {}, {}, {}", object, field, value)
             }
             Instruction::EnumCreate {
                 dest,
@@ -817,13 +771,11 @@ impl Display for Instruction {
                 }
                 Ok(())
             }
-
             Instruction::EnumGetTag {
                 dest, enum_value, ..
             } => {
                 write!(f, "  {} = enum_get_tag {}", dest, enum_value)
             }
-
             Instruction::EnumExtractData {
                 dest,
                 enum_value,
@@ -837,17 +789,14 @@ impl Display for Instruction {
                     dest, enum_value, variant_name, expected_type
                 )
             }
-
             Instruction::StringConcat {
                 dest, left, right, ..
             } => {
                 write!(f, "  {} = string_concat {}, {}", dest, left, right)
             }
-
             Instruction::StringLength { dest, string, .. } => {
                 write!(f, "  {} = string_length {}", dest, string)
             }
-
             Instruction::ArrayConcat {
                 dest,
                 left,
@@ -861,11 +810,9 @@ impl Display for Instruction {
                     dest, left, right, element_type
                 )
             }
-
             Instruction::ArrayLength { dest, array, .. } => {
                 write!(f, "  {} = array_length {}", dest, array)
             }
-
             Instruction::StringInit { dest, content, .. } => {
                 write!(f, "  {} = string_init \"{}\"", dest, content.escape_debug())
             }
@@ -873,7 +820,6 @@ impl Display for Instruction {
     }
 }
 
-// Display implementation for Terminator
 impl Display for Terminator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -907,7 +853,6 @@ impl Display for Terminator {
     }
 }
 
-// Display implementation for BasicBlock
 impl Display for BasicBlock {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}:", self.label)?;
@@ -921,7 +866,6 @@ impl Display for BasicBlock {
     }
 }
 
-// Display implementation for Function
 impl Display for Function {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.is_external {
@@ -950,7 +894,6 @@ impl Display for Function {
     }
 }
 
-// Display implementation for StructType
 impl Display for StructType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "%{} = type {{ ", self.name)?;
@@ -964,7 +907,6 @@ impl Display for StructType {
     }
 }
 
-// Display implementation for Module
 impl Display for Module {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "; Module: {}", self.name)?;

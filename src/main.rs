@@ -106,7 +106,7 @@ impl CompilationPipeline {
         if parser.report_errors() {
             Err(CompilationError::ParseError)
         } else {
-            Ok(ast) // Return the actual tuple format that your parser produces
+            Ok(ast)
         }
     }
 
@@ -120,7 +120,7 @@ impl CompilationPipeline {
         // Add standard library types and functions
         self.add_standard_library(&mut type_env);
 
-        let typed_ast = type_env.ast_to_typed_ast(ast); // Now matches the expected input type
+        let typed_ast = type_env.ast_to_typed_ast(ast);
 
         if type_env.report_errors() {
             return Err(CompilationError::TypeError);
@@ -142,11 +142,7 @@ impl CompilationPipeline {
             })
             .collect();
 
-        // println!("resolved ast {:#?}", resolved_ast);
-
         let mono_ast = type_env.monomorphize_ast(resolved_ast);
-
-        // println!("mono ast {:#?}", mono_ast);
 
         // Validation
         let validation_errors = validation::validate_ast(&mono_ast, self.filepath.clone());
@@ -213,7 +209,7 @@ impl CompilationPipeline {
         let executable_path = format!("{}/executable", self.output_dir);
         let optimized_ir_path = format!("{}/optimized.ll", self.output_dir);
 
-        // First, run your specific optimization passes
+        // First, run optimization passes
         let output = Command::new("opt-18")
             .args([
                 "-S",
@@ -269,13 +265,14 @@ impl CompilationPipeline {
             ));
         }
 
-        // Link with LTO enabled
+        // Link with Boehm GC
         let output = Command::new("clang")
             .args([
-                "-flto", // Enable LTO
-                "-O3",   // Aggressive optimization during linking
+                "-flto",
+                "-O3",
                 "-no-pie",
                 "-lm",
+                "-lgc",
                 &runtime_path,
                 &object_path,
                 "-o",
@@ -298,9 +295,17 @@ impl CompilationPipeline {
         let runtime_c_path = "runtime/runtime.c";
         let runtime_o_path = format!("{}/runtime.o", self.output_dir);
 
-        // Compile runtime
+        // Compile runtime with Boehm GC
         let output = Command::new("clang")
-            .args(["-c", runtime_c_path, "-o", "-flto", "-O3", &runtime_o_path])
+            .args([
+                "-c",
+                "-flto",
+                "-O3",
+                "-DUSE_BOEHM_GC", // Define macro for Boehm GC
+                runtime_c_path,
+                "-o",
+                &runtime_o_path,
+            ])
             .output()
             .map_err(|e| {
                 CompilationError::LinkError(format!("Failed to compile runtime: {}", e))

@@ -1,6 +1,6 @@
 use crate::codegen::LLVMCodegen;
 
-use inkwell::values::{FunctionValue, PhiValue};
+use inkwell::values::PhiValue;
 
 use std::collections::HashMap;
 
@@ -39,7 +39,6 @@ impl<'ctx> LLVMCodegen<'ctx> {
             self.builder.position_at_end(bb);
 
             for instr in &ir_block.instructions {
-                // Handle phi nodes specially - create them but don't fill yet
                 if let crate::ir::Instruction::Phi {
                     dest, ty, incoming, ..
                 } = instr
@@ -47,7 +46,6 @@ impl<'ctx> LLVMCodegen<'ctx> {
                     let phi_type = self.get_llvm_type(ty);
                     let phi = self.builder.build_phi(phi_type, dest).unwrap();
 
-                    // Store phi and its incoming data for later processing
                     phi_nodes.insert(dest.clone(), (phi, incoming.clone()));
                     self.value_map.insert(dest.clone(), phi.as_basic_value());
                 } else {
@@ -116,60 +114,6 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 let else_bb = block_map
                     .get(else_label)
                     .unwrap_or_else(|| panic!("Else block {} not found", else_label));
-
-                self.builder
-                    .build_conditional_branch(cond_val.into_int_value(), *then_bb, *else_bb)
-                    .unwrap();
-            }
-            Unreachable { .. } => {
-                self.builder.build_unreachable().unwrap();
-            }
-        }
-    }
-
-    pub fn codegen_terminator(
-        &mut self,
-        term: crate::ir::Terminator,
-        llvm_function: FunctionValue<'ctx>,
-    ) {
-        use crate::ir::Terminator::*;
-        match term {
-            Ret {
-                value: Some(val), ..
-            } => {
-                let ret_val = self.codegen_value(&val);
-                self.builder.build_return(Some(&ret_val)).unwrap();
-            }
-            Ret { value: None, .. } => {
-                self.builder.build_return(None).unwrap();
-            }
-            Br { label, .. } => {
-                // Fix the borrowing issue
-                let basic_blocks = llvm_function.get_basic_blocks();
-                let target_bb = basic_blocks
-                    .iter()
-                    .find(|bb| bb.get_name().to_str().unwrap() == label)
-                    .expect("Label block not found");
-                self.builder.build_unconditional_branch(*target_bb).unwrap();
-            }
-            CondBr {
-                cond,
-                then_label,
-                else_label,
-                ..
-            } => {
-                let cond_val = self.codegen_value(&cond);
-
-                // Fix the borrowing issue
-                let basic_blocks = llvm_function.get_basic_blocks();
-                let then_bb = basic_blocks
-                    .iter()
-                    .find(|bb| bb.get_name().to_str().unwrap() == then_label)
-                    .expect("Then block not found");
-                let else_bb = basic_blocks
-                    .iter()
-                    .find(|bb| bb.get_name().to_str().unwrap() == else_label)
-                    .expect("Else block not found");
 
                 self.builder
                     .build_conditional_branch(cond_val.into_int_value(), *then_bb, *else_bb)

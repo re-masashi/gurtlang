@@ -37,13 +37,12 @@ impl<'ctx> LLVMCodegen<'ctx> {
             return memcpy;
         }
 
-        // Declare memcpy: void* memcpy(void* dest, const void* src, size_t n)
         let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
         let memcpy_type = ptr_type.fn_type(
             &[
-                ptr_type.into(),                // dest
-                ptr_type.into(),                // src
-                self.context.i64_type().into(), // size
+                ptr_type.into(),
+                ptr_type.into(),
+                self.context.i64_type().into(),
             ],
             false,
         );
@@ -56,16 +55,13 @@ impl<'ctx> LLVMCodegen<'ctx> {
 
     pub fn get_llvm_type(&self, ir_type: &crate::ir::IRType) -> BasicTypeEnum<'ctx> {
         use crate::ir::IRType::*;
-
         match ir_type {
-            // Void can't be BasicTypeEnum - handle separately
             I1 => self.context.bool_type().as_basic_type_enum(),
             I8 => self.context.i8_type().as_basic_type_enum(),
             I32 => self.context.i32_type().as_basic_type_enum(),
             I64 => self.context.i64_type().as_basic_type_enum(),
             F64 => self.context.f64_type().as_basic_type_enum(),
-            // Use context.ptr_type() for LLVM 15+
-            Ptr | ManagedPtr => self
+            Ptr => self
                 .context
                 .ptr_type(inkwell::AddressSpace::default())
                 .as_basic_type_enum(),
@@ -81,24 +77,21 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 });
                 struct_ty.as_basic_type_enum()
             }
-            Function {
-                params: _,
-                return_type: _,
-            } => {
-                // Functions are pointers
-                self.context
-                    .ptr_type(inkwell::AddressSpace::default())
-                    .as_basic_type_enum()
-            }
+            Function { .. } => self
+                .context
+                .ptr_type(inkwell::AddressSpace::default())
+                .as_basic_type_enum(),
             Array { element_type, size } => {
                 let elem_ty = self.get_llvm_type(element_type);
                 elem_ty.array_type(*size as u32).as_basic_type_enum()
             }
             Void => {
-                // Void should be handled separately - this shouldn't be called for void
                 panic!("Void type cannot be converted to BasicTypeEnum")
             }
-            TaggedUnion { .. } => todo!(),
+            TaggedUnion { .. } => self
+                .context
+                .ptr_type(inkwell::AddressSpace::default())
+                .as_basic_type_enum(),
         }
     }
 
@@ -114,11 +107,60 @@ impl<'ctx> LLVMCodegen<'ctx> {
                     .context
                     .ptr_type(inkwell::AddressSpace::default())
                     .into()],
-                true, // variadic = true
+                true,
             );
 
             let fn_val = self.module.add_function("printf", printf_type, None);
             self.function_value_map.insert("printf".to_string(), fn_val);
+            return fn_val;
+        }
+
+        // Special handling for array functions to ensure correct signatures
+        if function.name == "array_get" {
+            let fn_type = self.context.i64_type().fn_type(
+                // Returns i64, not ptr
+                &[
+                    self.context
+                        .ptr_type(inkwell::AddressSpace::default())
+                        .into(),
+                    self.context.i64_type().into(),
+                ],
+                false,
+            );
+            let fn_val = self.module.add_function("array_get", fn_type, None);
+            self.function_value_map
+                .insert("array_get".to_string(), fn_val);
+            return fn_val;
+        }
+
+        if function.name == "array_set" {
+            let fn_type = self.context.void_type().fn_type(
+                &[
+                    self.context
+                        .ptr_type(inkwell::AddressSpace::default())
+                        .into(),
+                    self.context.i64_type().into(),
+                    self.context.i64_type().into(), // Third param is i64, not ptr
+                ],
+                false,
+            );
+            let fn_val = self.module.add_function("array_set", fn_type, None);
+            self.function_value_map
+                .insert("array_set".to_string(), fn_val);
+            return fn_val;
+        }
+
+        if function.name == "int_to_string" {
+            let fn_type = self
+                .context
+                .ptr_type(inkwell::AddressSpace::default())
+                .fn_type(
+                    &[self.context.i64_type().into()], // Takes i64, not ptr
+                    false,
+                );
+            let fn_val = self.module.add_function("int_to_string", fn_type, None);
+            self.function_value_map
+                .insert("int_to_string".to_string(), fn_val);
             return fn_val;
         }
 
@@ -146,15 +188,6 @@ impl<'ctx> LLVMCodegen<'ctx> {
         self.value_map.insert(name, value);
     }
 
-    fn get_type_id_for_heap_object(&self, heap_type: &crate::ir::HeapObjectType) -> i32 {
-        match heap_type {
-            crate::ir::HeapObjectType::String { .. } => 1,
-            crate::ir::HeapObjectType::Array { .. } => 2,
-            crate::ir::HeapObjectType::Struct { .. } => 3,
-        }
-    }
-
-    // Complete the codegen_value method for arguments
     pub fn codegen_value(&mut self, val: &crate::ir::Value) -> BasicValueEnum<'ctx> {
         match val {
             crate::ir::Value::Constant(c) => self.codegen_constant(c),
@@ -164,7 +197,6 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 .cloned()
                 .unwrap_or_else(|| panic!("Register {} not found", name)),
             crate::ir::Value::Global(name) => {
-                // Handle global strings and functions
                 if let Some(global) = self.module.get_global(name) {
                     global.as_pointer_value().into()
                 } else if let Some(func) = self.function_value_map.get(name) {
@@ -173,13 +205,11 @@ impl<'ctx> LLVMCodegen<'ctx> {
                     panic!("Global {} not found", name)
                 }
             }
-            crate::ir::Value::Argument(name) => {
-                // Arguments should already be in the value_map from function setup
-                self.value_map
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| panic!("Function argument {} not found", name))
-            }
+            crate::ir::Value::Argument(name) => self
+                .value_map
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| panic!("Function argument {} not found", name)),
         }
     }
 
@@ -193,7 +223,6 @@ impl<'ctx> LLVMCodegen<'ctx> {
             }
             crate::ir::Constant::Float(f) => self.context.f64_type().const_float(*f).into(),
             crate::ir::Constant::String(s) => {
-                // Create string constant
                 let string_val = self.context.const_string(s.as_bytes(), true);
                 let global = self.module.add_global(
                     string_val.get_type(),
@@ -228,7 +257,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
             global.set_unnamed_addr(true);
         }
 
-        // Declare all functions first (including externals)
+        // Declare all functions first
         for function in &ir_module.functions {
             self.declare_function(function);
         }

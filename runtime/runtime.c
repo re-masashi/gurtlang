@@ -2,30 +2,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <stdint.h>   // For uint32_t, uint8_t, etc.
-#include <ctype.h>    // For toupper, isspace, etc.
+#include <stdint.h>
+#include <ctype.h>
 #include <stdbool.h>
+#include <gc.h>  // Boehm GC header
 
-// GC header for all managed objects
+// String object (simplified for Boehm GC)
 typedef struct {
-    uint32_t ref_count;
-    uint32_t type_id;
-    size_t size;
-} gc_header_t;
-
-// String object
-typedef struct {
-    gc_header_t header;
     size_t length;
-    char data[];
+    char data[];  // Flexible array member
 } string_obj_t;
 
-// Array object
+// Array object (simplified for Boehm GC)
 typedef struct {
-    gc_header_t header;
     size_t length;
     size_t capacity;
-    void* data[];
+    size_t element_size;
+    void* data[];  // Flexible array member
 } array_obj_t;
 
 #define TYPE_STRING 1
@@ -34,72 +27,45 @@ typedef struct {
 #define TYPE_FLOAT 4
 #define TYPE_BOOL 5
 
-// Basic GC operations
+// Initialize Boehm GC (called automatically when library loads)
+__attribute__((constructor))
+void init_gc() {
+    GC_INIT();
+    printf("Boehm GC initialized\n");
+}
+
+// Basic GC operations (simplified - Boehm GC handles everything)
 void* gc_alloc(size_t size, uint32_t type_id) {
-    gc_header_t* obj = malloc(sizeof(gc_header_t) + size);
-    if (!obj) {
+    (void)type_id; // Unused with Boehm GC
+    void* ptr = GC_MALLOC(size);
+    if (!ptr) {
         fprintf(stderr, "Out of memory\n");
         exit(1);
     }
-    obj->ref_count = 1;
-    obj->type_id = type_id;
-    obj->size = size;
-    return (char*)obj + sizeof(gc_header_t);
+    return ptr;
 }
 
+// These are no-ops with Boehm GC, but kept for compatibility
 void gc_retain(void* ptr) {
-    if (!ptr) return;
-    gc_header_t* header = (gc_header_t*)((char*)ptr - sizeof(gc_header_t));
-    header->ref_count++;
+    (void)ptr; // No-op with Boehm GC
 }
 
 void gc_release(void* ptr) {
-    if (!ptr) return;
-
-    // printf("DEBUG: gc_release called with ptr=%p\n", ptr);
-    
-    // Validate pointer is not obviously corrupted
-    if ((uintptr_t)ptr < 0x1000) {
-        fprintf(stderr, "Error: Attempting to release invalid pointer %p\n", ptr);
-        return;
-    }
-    
-    gc_header_t* header = (gc_header_t*)((char*)ptr - sizeof(gc_header_t));
-    
-    // Sanity check the header
-    if (header->ref_count == 0) {
-        fprintf(stderr, "Error: Double-free detected on pointer %p\n", ptr);
-        return;
-    }
-    
-    if (header->ref_count > 10000) {
-        fprintf(stderr, "Error: Corrupted ref_count %u on pointer %p\n", header->ref_count, ptr);
-        return;
-    }
-    
-    if (--header->ref_count == 0) {
-        free(header);
-    }
+    (void)ptr; // No-op with Boehm GC
 }
-
 
 // String operations
 void* string_concat(void* left, void* right) {
-    // fprintf(stderr, "DEBUG: string_concat with left=%p, right=%p\n", left, right);
-    
     if (!left || !right) return NULL;
     
-    // All strings are now managed - no detection needed!
+    // Consistent string layout: [length][data...]
     size_t l_len = *(size_t*)left;
     char* l_data = (char*)left + sizeof(size_t);
     
     size_t r_len = *(size_t*)right;  
     char* r_data = (char*)right + sizeof(size_t);
     
-    // fprintf(stderr, "DEBUG: Left len=%zu data='%.*s'\n", l_len, (int)l_len, l_data);
-    // fprintf(stderr, "DEBUG: Right len=%zu data='%.*s'\n", r_len, (int)r_len, r_data);
-    
-    // Create result with consistent layout
+    // Create result
     size_t new_len = l_len + r_len;
     void* result = gc_alloc(sizeof(size_t) + new_len + 1, TYPE_STRING);
     
@@ -112,7 +78,6 @@ void* string_concat(void* left, void* right) {
     memcpy(result_data + l_len, r_data, r_len);
     result_data[new_len] = '\0';
     
-    // fprintf(stderr, "DEBUG: Result len=%zu data='%s'\n", new_len, result_data);
     return result;
 }
 
@@ -122,20 +87,76 @@ int64_t string_length(void* str) {
     return (int64_t)length;
 }
 
+// Array operations (simplified for integer arrays)
+void* array_new(int64_t element_size, int64_t length) {
+    if (length < 0) return NULL;
+    
+    size_t total_size = sizeof(array_obj_t) + (sizeof(int64_t) * length);
+    array_obj_t* arr = (array_obj_t*)gc_alloc(total_size, TYPE_ARRAY);
+    
+    arr->length = length;
+    arr->capacity = length;
+    arr->element_size = element_size;
+    
+    // Initialize to zero
+    memset(arr->data, 0, sizeof(int64_t) * length);
+    
+    return arr;
+}
 
-// Array operations
+int64_t array_get(void* array_ptr, int64_t index) {
+    if (!array_ptr) return 0;
+    
+    array_obj_t* arr = (array_obj_t*)array_ptr;
+    if (index < 0 || index >= arr->length) return 0;
+    
+    // Treat data as int64_t array
+    int64_t* data_ptr = (int64_t*)arr->data;
+    return data_ptr[index];
+}
+
+void array_set(void* array_ptr, int64_t index, int64_t value) {
+    if (!array_ptr) return;
+    
+    array_obj_t* arr = (array_obj_t*)array_ptr;
+    if (index < 0 || index >= arr->length) return;
+    
+    // Store value directly
+    int64_t* data_ptr = (int64_t*)arr->data;
+    data_ptr[index] = value;
+}
+
+int64_t array_length(void* arr) {
+    if (!arr) return 0;
+    array_obj_t* a = (array_obj_t*)arr;
+    return (int64_t)a->length;
+}
+
+void* array_concat(void* left, void* right, int64_t element_size) {
+    if (!left || !right) return NULL;
+    
+    array_obj_t* l = (array_obj_t*)left;
+    array_obj_t* r = (array_obj_t*)right;
+    
+    int64_t new_length = l->length + r->length;
+    void* result = array_new(element_size, new_length);
+    array_obj_t* res = (array_obj_t*)result;
+    
+    // Copy elements (treating as int64_t for simplicity)
+    int64_t* l_data = (int64_t*)l->data;
+    int64_t* r_data = (int64_t*)r->data;
+    int64_t* res_data = (int64_t*)res->data;
+    
+    memcpy(res_data, l_data, l->length * sizeof(int64_t));
+    memcpy(res_data + l->length, r_data, r->length * sizeof(int64_t));
+    
+    return result;
+}
+
+// Generic array operations (for object arrays)
 void* gc_array_new(int32_t type_id, int64_t length) {
-    size_t capacity = length > 0 ? length : 4;
-    array_obj_t* obj = (array_obj_t*)gc_alloc(sizeof(array_obj_t) + capacity * sizeof(void*), TYPE_ARRAY);
-    obj->length = length;
-    obj->capacity = capacity;
-    
-    // Initialize to null
-    for (size_t i = 0; i < capacity; i++) {
-        obj->data[i] = NULL;
-    }
-    
-    return obj;
+    (void)type_id; // Unused
+    return array_new(sizeof(void*), length);
 }
 
 void* gc_array_get(void* arr, int64_t index) {
@@ -150,60 +171,13 @@ void gc_array_set(void* arr, int64_t index, void* value) {
     array_obj_t* a = (array_obj_t*)arr;
     if (index < 0 || index >= (int64_t)a->capacity) return;
     
-    // Check if old value is valid before releasing
-    void* old_value = a->data[index];
-    if (old_value) {
-        // Validate the old value has a proper GC header
-        gc_header_t* old_header = (gc_header_t*)((char*)old_value - sizeof(gc_header_t));
-        
-        // Basic sanity check - ref_count should be reasonable
-        if (old_header->ref_count > 0 && old_header->ref_count < 10000) {
-            gc_release(old_value);
-        } else {
-            // Don't release - this pointer is probably corrupted
-            fprintf(stderr, "Warning: Skipping release of potentially corrupted pointer %p\n", old_value);
-        }
-    }
-    
-    // Retain new value
-    if (value) {
-        gc_retain(value);
-    }
-    
+    // With Boehm GC, no need for retain/release
     a->data[index] = value;
     
     // Update length if necessary
     if (index >= (int64_t)a->length) {
         a->length = index + 1;
     }
-}
-
-int64_t array_length(void* arr) {
-    if (!arr) return 0;
-    array_obj_t* a = (array_obj_t*)arr;
-    return (int64_t)a->length;
-}
-
-void* array_concat(void* left, void* right, int32_t element_type) {
-    if (!left || !right) return NULL;
-    array_obj_t* l = (array_obj_t*)left;
-    array_obj_t* r = (array_obj_t*)right;
-    
-    int64_t new_length = l->length + r->length;
-    void* result = gc_array_new(element_type, new_length);
-    array_obj_t* res = (array_obj_t*)result;
-    
-    // Copy elements from left array
-    for (int64_t i = 0; i < (int64_t)l->length; i++) {
-        gc_array_set(result, i, l->data[i]);
-    }
-    
-    // Copy elements from right array
-    for (int64_t i = 0; i < (int64_t)r->length; i++) {
-        gc_array_set(result, (int64_t)l->length + i, r->data[i]);
-    }
-    
-    return result;
 }
 
 // Type conversion functions
@@ -272,11 +246,11 @@ void print_internal(void* str) {
         return;
     }
     
-    // All strings have the same layout now
+    // Consistent string layout: [length][data...]
     size_t length = *(size_t*)str;
     char* data = (char*)str + sizeof(size_t);
     
-    printf("%s", data);
+    printf("%.*s", (int)length, data);
     fflush(stdout);
 }
 
@@ -284,7 +258,6 @@ void print_internal(void* str) {
 void* substring(void* str, int64_t start, int64_t end) {
     if (!str) return NULL;
     
-    // Use new layout
     size_t str_len = *(size_t*)str;
     char* str_data = (char*)str + sizeof(size_t);
     
@@ -329,15 +302,18 @@ void* to_upper(void* str) {
 
 void* to_lower(void* str) {
     if (!str) return NULL;
-    string_obj_t* s = (string_obj_t*)str;
     
-    string_obj_t* result = (string_obj_t*)gc_alloc(sizeof(string_obj_t) + s->length + 1, TYPE_STRING);
-    result->length = s->length;
+    size_t str_len = *(size_t*)str;
+    char* str_data = (char*)str + sizeof(size_t);
     
-    for (size_t i = 0; i < s->length; i++) {
-        result->data[i] = tolower((unsigned char)s->data[i]);
+    void* result = gc_alloc(sizeof(size_t) + str_len + 1, TYPE_STRING);
+    *(size_t*)result = str_len;
+    
+    char* result_data = (char*)result + sizeof(size_t);
+    for (size_t i = 0; i < str_len; i++) {
+        result_data[i] = tolower((unsigned char)str_data[i]);
     }
-    result->data[s->length] = '\0';
+    result_data[str_len] = '\0';
     
     return result;
 }
@@ -345,7 +321,6 @@ void* to_lower(void* str) {
 void* trim(void* str) {
     if (!str) return NULL;
     
-    // Use new managed layout: [length][data]
     size_t str_len = *(size_t*)str;
     char* str_data = (char*)str + sizeof(size_t);
     
@@ -357,7 +332,6 @@ void* trim(void* str) {
     // Find last non-whitespace
     while (end > start && isspace((unsigned char)str_data[end - 1])) end--;
     
-    // Create result with new layout
     size_t result_len = end - start;
     void* result = gc_alloc(sizeof(size_t) + result_len + 1, TYPE_STRING);
     *(size_t*)result = result_len;
@@ -429,4 +403,10 @@ int64_t floor_float(double x) {
 
 int64_t ceil_float(double x) {
     return (int64_t)ceil(x);
+}
+
+// GC stats (for debugging)
+void gc_stats() {
+    printf("GC heap size: %lu bytes\n", GC_get_heap_size());
+    printf("GC free bytes: %lu bytes\n", GC_get_free_bytes());
 }

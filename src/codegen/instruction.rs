@@ -4,6 +4,7 @@ use inkwell::values::BasicMetadataValueEnum;
 use inkwell::values::BasicValueEnum;
 use inkwell::values::FunctionValue;
 
+use inkwell::types::BasicType;
 use inkwell::types::BasicTypeEnum;
 
 impl<'ctx> LLVMCodegen<'ctx> {
@@ -37,7 +38,6 @@ impl<'ctx> LLVMCodegen<'ctx> {
                         .into(),
                     _ => panic!("Add with unsupported type {:?}", ty),
                 };
-                // Store in value map
                 self.store_value(dest.clone(), res);
             }
 
@@ -97,17 +97,15 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 let lhs_val = self.codegen_value(lhs);
                 let rhs_val = self.codegen_value(rhs);
                 let res: BasicValueEnum = match self.get_llvm_type(ty) {
-                    BasicTypeEnum::IntType(_) => {
-                        // Use signed division for integers
-                        self.builder
-                            .build_int_signed_div(
-                                lhs_val.into_int_value(),
-                                rhs_val.into_int_value(),
-                                dest,
-                            )
-                            .unwrap()
-                            .into()
-                    }
+                    BasicTypeEnum::IntType(_) => self
+                        .builder
+                        .build_int_signed_div(
+                            lhs_val.into_int_value(),
+                            rhs_val.into_int_value(),
+                            dest,
+                        )
+                        .unwrap()
+                        .into(),
                     BasicTypeEnum::FloatType(_) => self
                         .builder
                         .build_float_div(
@@ -172,7 +170,6 @@ impl<'ctx> LLVMCodegen<'ctx> {
                     crate::ir::FCmpCond::Oge => inkwell::FloatPredicate::OGE,
                     crate::ir::FCmpCond::Olt => inkwell::FloatPredicate::OLT,
                     crate::ir::FCmpCond::Ole => inkwell::FloatPredicate::OLE,
-                    // Add other float predicates as needed
                     _ => inkwell::FloatPredicate::OEQ,
                 };
                 let res = self
@@ -212,7 +209,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
                     .unwrap();
             }
 
-            // Function calls (already implemented above)
+            // Function calls
             Call {
                 dest, func, args, ..
             } => {
@@ -241,58 +238,22 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 }
             }
 
-            // Reference counting operations
-            Retain { ptr, .. } => {
-                let ptr_val = self.codegen_value(ptr);
-                let gc_retain_func = *self
+            // GC allocation (simplified to just call GC_malloc)
+            GCAlloc { dest, size, .. } => {
+                let gc_malloc_func = *self
                     .function_value_map
-                    .get("gc_retain")
-                    .expect("gc_retain not declared");
-                self.builder
-                    .build_call(gc_retain_func, &[ptr_val.into()], "")
-                    .unwrap();
-            }
-
-            Release { ptr, .. } => {
-                let ptr_val = self.codegen_value(ptr);
-                let gc_release_func = *self
-                    .function_value_map
-                    .get("gc_release")
-                    .expect("gc_release not declared");
-                self.builder
-                    .build_call(gc_release_func, &[ptr_val.into()], "")
-                    .unwrap();
-            }
-
-            // GC operations - these become runtime calls
-            GCAlloc {
-                dest,
-                object_type,
-                size,
-                ..
-            } => {
-                let gc_alloc_func = *self
-                    .function_value_map
-                    .get("gc_alloc")
-                    .expect("gc_alloc not declared");
+                    .get("GC_malloc")
+                    .expect("GC_malloc not declared");
 
                 let size_val = if let Some(sz) = size {
                     self.codegen_value(sz)
                 } else {
-                    self.context.i64_type().const_int(8, false).into() // Default size
+                    self.context.i64_type().const_int(8, false).into()
                 };
-
-                // CRITICAL: Add the type_id argument
-                let type_id = self.get_type_id_for_heap_object(object_type);
-                let type_id_const = self.context.i32_type().const_int(type_id as u64, false);
 
                 let allocated = self
                     .builder
-                    .build_call(
-                        gc_alloc_func,
-                        &[size_val.into(), type_id_const.into()], // Pass BOTH arguments
-                        dest,
-                    )
+                    .build_call(gc_malloc_func, &[size_val.into()], dest)
                     .unwrap();
 
                 if let Some(return_value) = allocated.try_as_basic_value().left() {
@@ -315,15 +276,14 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 global_content.set_initializer(&string_content);
                 global_content.set_linkage(inkwell::module::Linkage::Private);
 
-                // Use context.ptr_type instead of type.ptr_type
                 let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                 let byte_ptr = self
                     .builder
                     .build_bit_cast(dest_ptr, ptr_type, "byte_ptr")
                     .unwrap()
-                    .into_pointer_value(); // FIX: Convert to PointerValue
+                    .into_pointer_value();
 
-                // Store length at offset 0 - FIX: Convert length_ptr to PointerValue
+                // Store length at offset 0
                 let length_val = self
                     .context
                     .i64_type()
@@ -332,20 +292,15 @@ impl<'ctx> LLVMCodegen<'ctx> {
                     .builder
                     .build_bit_cast(byte_ptr, ptr_type, "length_ptr")
                     .unwrap()
-                    .into_pointer_value(); // FIX: Convert to PointerValue
+                    .into_pointer_value();
 
                 self.builder.build_store(length_ptr, length_val).unwrap();
 
-                // Get data pointer (after length field) - FIX: Pass PointerValue to build_gep
+                // Get data pointer (after length field)
                 let data_offset = self.context.i64_type().const_int(8, false);
                 let data_ptr = unsafe {
                     self.builder
-                        .build_gep(
-                            self.context.i8_type(),
-                            byte_ptr, // This is already a PointerValue now
-                            &[data_offset],
-                            "data_ptr",
-                        )
+                        .build_gep(self.context.i8_type(), byte_ptr, &[data_offset], "data_ptr")
                         .unwrap()
                 };
 
@@ -414,8 +369,8 @@ impl<'ctx> LLVMCodegen<'ctx> {
             } => {
                 let left_val = self.codegen_value(left);
                 let right_val = self.codegen_value(right);
-                let type_id = self.get_type_id_for_heap_object(element_type);
-                let type_id_const = self.context.i32_type().const_int(type_id as u64, false);
+                let element_size = self.get_element_size_for_heap_object(element_type);
+                let element_size_const = self.context.i64_type().const_int(element_size, false);
 
                 let array_concat_func = *self
                     .function_value_map
@@ -425,7 +380,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
                     .builder
                     .build_call(
                         array_concat_func,
-                        &[left_val.into(), right_val.into(), type_id_const.into()],
+                        &[left_val.into(), right_val.into(), element_size_const.into()],
                         dest,
                     )
                     .unwrap();
@@ -434,76 +389,52 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 }
             }
 
-            // Phi nodes
-            Phi {
-                dest, ty, incoming, ..
-            } => {
-                let phi_type = self.get_llvm_type(ty);
-                let phi = self.builder.build_phi(phi_type, dest).unwrap();
-
-                // Add incoming values (this will be filled in during a second pass)
-                for (value, _label) in incoming {
-                    let _val = self.codegen_value(value);
-                    // Note: We'd need to resolve labels to basic blocks here
-                    // This is typically done in a second pass
-                }
-
-                self.store_value(dest.clone(), phi.as_basic_value());
-            }
-
-            GCArrayNew {
+            ArrayNew {
                 dest,
                 element_type,
                 length,
                 ..
             } => {
                 let length_val = self.codegen_value(length);
-                let type_id = self.get_type_id_for_heap_object(element_type);
-                let type_id_const = self.context.i32_type().const_int(type_id as u64, false);
+                let element_size = self.get_element_size_for_heap_object(element_type);
+                let element_size_const = self.context.i64_type().const_int(element_size, false);
 
-                let gc_array_new_func = *self
+                let array_new_func = *self
                     .function_value_map
-                    .get("gc_array_new")
-                    .expect("gc_array_new not declared");
+                    .get("array_new")
+                    .expect("array_new not declared");
                 let result = self
                     .builder
                     .build_call(
-                        gc_array_new_func,
-                        &[type_id_const.into(), length_val.into()],
+                        array_new_func,
+                        &[element_size_const.into(), length_val.into()],
                         dest,
                     )
                     .unwrap();
-
                 if let Some(return_value) = result.try_as_basic_value().left() {
                     self.store_value(dest.clone(), return_value);
                 }
             }
 
-            GCArrayGet {
+            ArrayGet {
                 dest, array, index, ..
             } => {
                 let array_val = self.codegen_value(array);
                 let index_val = self.codegen_value(index);
-
-                let gc_array_get_func = *self
+                let array_get_func = *self
                     .function_value_map
-                    .get("gc_array_get")
-                    .expect("gc_array_get not declared");
+                    .get("array_get")
+                    .expect("array_get not declared");
                 let result = self
                     .builder
-                    .build_call(
-                        gc_array_get_func,
-                        &[array_val.into(), index_val.into()],
-                        dest,
-                    )
+                    .build_call(array_get_func, &[array_val.into(), index_val.into()], dest)
                     .unwrap();
-
                 if let Some(return_value) = result.try_as_basic_value().left() {
                     self.store_value(dest.clone(), return_value);
                 }
             }
 
-            GCArraySet {
+            ArraySet {
                 array,
                 index,
                 value,
@@ -512,38 +443,423 @@ impl<'ctx> LLVMCodegen<'ctx> {
                 let array_val = self.codegen_value(array);
                 let index_val = self.codegen_value(index);
                 let value_val = self.codegen_value(value);
-
-                let gc_array_set_func = *self
+                let array_set_func = *self
                     .function_value_map
-                    .get("gc_array_set")
-                    .expect("gc_array_set not declared");
+                    .get("array_set")
+                    .expect("array_set not declared");
                 self.builder
                     .build_call(
-                        gc_array_set_func,
+                        array_set_func,
                         &[array_val.into(), index_val.into(), value_val.into()],
                         "",
                     )
                     .unwrap();
             }
 
-            Unbox {
-                dest,
-                boxed_ptr,
-                primitive_type,
-                ..
-            } => {
-                let ptr_val = self.codegen_value(boxed_ptr);
-                let target_type = self.get_llvm_type(primitive_type);
-
-                let loaded = self
+            ArrayLength { dest, array, .. } => {
+                let array_val = self.codegen_value(array);
+                let array_length_func = *self
+                    .function_value_map
+                    .get("array_length")
+                    .expect("array_length not declared");
+                let result = self
                     .builder
-                    .build_load(target_type, ptr_val.into_pointer_value(), dest)
+                    .build_call(array_length_func, &[array_val.into()], dest)
                     .unwrap();
-
-                self.store_value(dest.clone(), loaded);
+                if let Some(return_value) = result.try_as_basic_value().left() {
+                    self.store_value(dest.clone(), return_value);
+                }
             }
 
-            _ => unimplemented!("Instruction {:?} not implemented yet", instr),
+            StringLength { dest, string, .. } => {
+                let string_val = self.codegen_value(string);
+                let string_length_func = *self
+                    .function_value_map
+                    .get("string_length")
+                    .expect("string_length not declared");
+                let result = self
+                    .builder
+                    .build_call(string_length_func, &[string_val.into()], dest)
+                    .unwrap();
+                if let Some(return_value) = result.try_as_basic_value().left() {
+                    self.store_value(dest.clone(), return_value);
+                }
+            }
+
+            // Struct operations
+            StructNew {
+                dest, struct_type, ..
+            } => {
+                // Get struct type info
+                let struct_ir_type = crate::ir::IRType::Struct {
+                    name: struct_type.clone(),
+                    fields: vec![], // We'll need to look this up properly
+                };
+                let struct_llvm_type = self.get_llvm_type(&struct_ir_type);
+                let struct_size = struct_llvm_type.size_of().unwrap();
+
+                // Allocate using GC
+                let gc_malloc_func = *self
+                    .function_value_map
+                    .get("GC_malloc")
+                    .expect("GC_malloc not declared");
+                let allocated = self
+                    .builder
+                    .build_call(gc_malloc_func, &[struct_size.into()], dest)
+                    .unwrap();
+
+                if let Some(return_value) = allocated.try_as_basic_value().left() {
+                    // Bitcast to proper struct type
+                    let struct_ptr = self
+                        .builder
+                        .build_bit_cast(
+                            return_value.into_pointer_value(),
+                            self.context.ptr_type(inkwell::AddressSpace::default()),
+                            "struct_ptr",
+                        )
+                        .unwrap();
+                    self.store_value(dest.clone(), struct_ptr);
+                }
+            }
+
+            StructGet {
+                dest,
+                object,
+                field,
+                ..
+            } => {
+                let object_val = self.codegen_value(object);
+                let object_ptr = object_val.into_pointer_value();
+
+                // For now, assume field access by name using GEP
+                // This is a simplified implementation - in reality you'd need
+                // to look up field indices from the struct type
+                let field_index = self.get_field_index(field); // Helper method needed
+                let field_ptr = self
+                    .builder
+                    .build_struct_gep(
+                        self.context.i8_type(), // Placeholder type
+                        object_ptr,
+                        field_index,
+                        "field_ptr",
+                    )
+                    .unwrap();
+
+                let loaded_field = self
+                    .builder
+                    .build_load(
+                        self.context.i64_type(), // Placeholder type
+                        field_ptr,
+                        dest,
+                    )
+                    .unwrap();
+                self.store_value(dest.clone(), loaded_field);
+            }
+
+            StructSet {
+                object,
+                field,
+                value,
+                ..
+            } => {
+                let object_val = self.codegen_value(object);
+                let value_val = self.codegen_value(value);
+                let object_ptr = object_val.into_pointer_value();
+
+                let field_index = self.get_field_index(field);
+                let field_ptr = self
+                    .builder
+                    .build_struct_gep(
+                        self.context.i8_type(), // Placeholder type
+                        object_ptr,
+                        field_index,
+                        "field_ptr",
+                    )
+                    .unwrap();
+
+                self.builder.build_store(field_ptr, value_val).unwrap();
+            }
+
+            // Enum operations
+            EnumCreate {
+                dest,
+
+                variant_name,
+                variant_data,
+                ..
+            } => {
+                // Simplified enum implementation - allocate space for tag + data
+                let enum_size = 16; // 8 bytes tag + 8 bytes data pointer
+                let gc_malloc_func = *self
+                    .function_value_map
+                    .get("GC_malloc")
+                    .expect("GC_malloc not declared");
+
+                let size_val = self.context.i64_type().const_int(enum_size, false);
+                let allocated = self
+                    .builder
+                    .build_call(gc_malloc_func, &[size_val.into()], dest)
+                    .unwrap();
+
+                if let Some(enum_ptr) = allocated.try_as_basic_value().left() {
+                    let ptr = enum_ptr.into_pointer_value();
+
+                    // Store tag (simplified - use hash of variant name)
+                    let tag_val = self
+                        .context
+                        .i64_type()
+                        .const_int(self.hash_variant_name(variant_name), false);
+                    let tag_ptr = self
+                        .builder
+                        .build_bit_cast(
+                            ptr,
+                            self.context.ptr_type(inkwell::AddressSpace::default()),
+                            "tag_ptr",
+                        )
+                        .unwrap()
+                        .into_pointer_value();
+                    self.builder.build_store(tag_ptr, tag_val).unwrap();
+
+                    // Store data if present
+                    if let Some(data) = variant_data {
+                        let data_val = self.codegen_value(data);
+                        let data_offset = self.context.i64_type().const_int(8, false);
+                        let data_ptr = unsafe {
+                            self.builder
+                                .build_gep(self.context.i8_type(), ptr, &[data_offset], "data_ptr")
+                                .unwrap()
+                        };
+                        let typed_data_ptr = self
+                            .builder
+                            .build_bit_cast(
+                                data_ptr,
+                                self.context.ptr_type(inkwell::AddressSpace::default()),
+                                "typed_data_ptr",
+                            )
+                            .unwrap()
+                            .into_pointer_value();
+                        self.builder.build_store(typed_data_ptr, data_val).unwrap();
+                    }
+
+                    self.store_value(dest.clone(), enum_ptr);
+                }
+            }
+
+            EnumGetTag {
+                dest, enum_value, ..
+            } => {
+                let enum_val = self.codegen_value(enum_value);
+                let enum_ptr = enum_val.into_pointer_value();
+
+                // Load tag from first 8 bytes
+                let tag_ptr = self
+                    .builder
+                    .build_bit_cast(
+                        enum_ptr,
+                        self.context.ptr_type(inkwell::AddressSpace::default()),
+                        "tag_ptr",
+                    )
+                    .unwrap()
+                    .into_pointer_value();
+                let tag_val = self
+                    .builder
+                    .build_load(self.context.i64_type(), tag_ptr, dest)
+                    .unwrap();
+                self.store_value(dest.clone(), tag_val);
+            }
+
+            EnumExtractData {
+                dest,
+                enum_value,
+                variant_name: _,
+                expected_type,
+                ..
+            } => {
+                let enum_val = self.codegen_value(enum_value);
+                let enum_ptr = enum_val.into_pointer_value();
+
+                // Get data pointer (offset 8 bytes from start)
+                let data_offset = self.context.i64_type().const_int(8, false);
+                let data_ptr = unsafe {
+                    self.builder
+                        .build_gep(self.context.i8_type(), enum_ptr, &[data_offset], "data_ptr")
+                        .unwrap()
+                };
+
+                // Cast to expected type and load
+                let expected_llvm_type = self.get_llvm_type(expected_type);
+                let typed_ptr = self
+                    .builder
+                    .build_bit_cast(
+                        data_ptr,
+                        self.context.ptr_type(inkwell::AddressSpace::default()),
+                        "typed_ptr",
+                    )
+                    .unwrap()
+                    .into_pointer_value();
+                let loaded_data = self
+                    .builder
+                    .build_load(expected_llvm_type, typed_ptr, dest)
+                    .unwrap();
+                self.store_value(dest.clone(), loaded_data);
+            }
+
+            // Type conversions
+            BitCast {
+                dest, value, to_ty, ..
+            } => {
+                let val = self.codegen_value(value);
+                let target_type = self.get_llvm_type(to_ty);
+                let cast_val = self.builder.build_bit_cast(val, target_type, dest).unwrap();
+                self.store_value(dest.clone(), cast_val);
+            }
+
+            Trunc {
+                dest, value, to_ty, ..
+            } => {
+                let val = self.codegen_value(value);
+                let target_type = self.get_llvm_type(to_ty);
+                let trunc_val = self
+                    .builder
+                    .build_int_truncate(val.into_int_value(), target_type.into_int_type(), dest)
+                    .unwrap();
+                self.store_value(dest.clone(), trunc_val.into());
+            }
+
+            ZExt {
+                dest, value, to_ty, ..
+            } => {
+                let val = self.codegen_value(value);
+                let target_type = self.get_llvm_type(to_ty);
+                let ext_val = self
+                    .builder
+                    .build_int_z_extend(val.into_int_value(), target_type.into_int_type(), dest)
+                    .unwrap();
+                self.store_value(dest.clone(), ext_val.into());
+            }
+
+            SExt {
+                dest, value, to_ty, ..
+            } => {
+                let val = self.codegen_value(value);
+                let target_type = self.get_llvm_type(to_ty);
+                let ext_val = self
+                    .builder
+                    .build_int_s_extend(val.into_int_value(), target_type.into_int_type(), dest)
+                    .unwrap();
+                self.store_value(dest.clone(), ext_val.into());
+            }
+
+            // Pointer operations
+            GetElementPtr {
+                dest,
+                ptr,
+                indices,
+                ty,
+                ..
+            } => {
+                let ptr_val = self.codegen_value(ptr);
+                let element_type = self.get_llvm_type(ty);
+
+                let index_vals: Vec<inkwell::values::IntValue> = indices
+                    .iter()
+                    .map(|idx| self.codegen_value(idx).into_int_value())
+                    .collect();
+
+                let gep = unsafe {
+                    self.builder
+                        .build_gep(
+                            element_type,
+                            ptr_val.into_pointer_value(),
+                            &index_vals,
+                            dest,
+                        )
+                        .unwrap()
+                };
+                self.store_value(dest.clone(), gep.into());
+            }
+
+            ExtractValue {
+                dest,
+                aggregate,
+                indices,
+                ..
+            } => {
+                let agg_val = self.codegen_value(aggregate);
+                let mut current_val = agg_val;
+
+                for &index in indices {
+                    current_val = self
+                        .builder
+                        .build_extract_value(
+                            current_val.into_struct_value(),
+                            index as u32,
+                            "extract",
+                        )
+                        .unwrap();
+                }
+                self.store_value(dest.clone(), current_val);
+            }
+
+            InsertValue {
+                dest,
+                aggregate,
+                value,
+                indices,
+                ..
+            } => {
+                let agg_val = self.codegen_value(aggregate);
+                let val = self.codegen_value(value);
+                let mut current_val = agg_val;
+
+                // For simplicity, only handle single index
+                if let Some(&index) = indices.first() {
+                    let inserted = self
+                        .builder
+                        .build_insert_value(
+                            current_val.into_struct_value(),
+                            val,
+                            index as u32,
+                            dest,
+                        )
+                        .unwrap();
+
+                    // Convert AggregateValueEnum back to BasicValueEnum
+                    current_val = match inserted {
+                        inkwell::values::AggregateValueEnum::ArrayValue(arr) => arr.into(),
+                        inkwell::values::AggregateValueEnum::StructValue(s) => s.into(),
+                    };
+                }
+                self.store_value(dest.clone(), current_val);
+            }
+
+            // Phi nodes are handled separately in the function generation
+            Phi { .. } => {
+                // Already handled in codegen_function
+            }
         }
+    }
+
+    // Helper methods
+    fn get_element_size_for_heap_object(&self, obj_type: &crate::ir::HeapObjectType) -> u64 {
+        match obj_type {
+            crate::ir::HeapObjectType::Array { .. } => 8, // Pointer size
+            crate::ir::HeapObjectType::Struct { .. } => 8, // Simplified
+            crate::ir::HeapObjectType::String { .. } => 1, // Byte
+        }
+    }
+
+    fn get_field_index(&self, _field_name: &str) -> u32 {
+        // Simplified - in reality you'd look this up from struct metadata
+        0
+    }
+
+    fn hash_variant_name(&self, name: &str) -> u64 {
+        // Simple hash for variant names
+        let mut hash = 0u64;
+        for byte in name.bytes() {
+            hash = hash.wrapping_mul(31).wrapping_add(byte as u64);
+        }
+        hash
     }
 }

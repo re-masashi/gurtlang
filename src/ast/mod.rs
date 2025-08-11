@@ -422,22 +422,21 @@ impl TypedFunction {
     }
 
     fn contains_type_variables(&self, ty: &Arc<Type>) -> bool {
-        match &**ty {
-            Type::Variable(_) => true,
-            Type::Constructor { generics, .. } => {
-                generics.iter().any(|g| self.contains_type_variables(g))
-            }
-            Type::Function {
-                params,
-                return_type,
-            } => {
-                params.iter().any(|p| self.contains_type_variables(p))
-                    || self.contains_type_variables(return_type)
-            }
-            Type::Tuple(types) => types.iter().any(|t| self.contains_type_variables(t)),
-            Type::Union(types) => types.iter().any(|t| self.contains_type_variables(t)),
-            _ => false,
-        }
+        contains_type_variables(ty)
+    }
+}
+
+fn contains_type_variables(ty: &Arc<Type>) -> bool {
+    match &**ty {
+        Type::Variable(_) => true,
+        Type::Constructor { generics, .. } => generics.iter().any(contains_type_variables),
+        Type::Function {
+            params,
+            return_type,
+        } => params.iter().any(contains_type_variables) || contains_type_variables(return_type),
+        Type::Tuple(types) => types.iter().any(contains_type_variables),
+        Type::Union(types) => types.iter().any(contains_type_variables),
+        _ => false,
     }
 }
 

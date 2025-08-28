@@ -7,4 +7,4 @@ def fib_helper(n: int, a: int, b: int)
 def fib(n: int)
     fib_helper(n, 0, 1)
 
-let _a = fib(35)
+fib(35)

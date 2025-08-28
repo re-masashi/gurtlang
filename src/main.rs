@@ -43,37 +43,37 @@ impl CompilationPipeline {
         // Ensure output directory exists
         fs::create_dir_all(&self.output_dir)?;
 
-        println!("🚀 Compiling: {}", self.filepath);
+        println!("Compiling: {}", self.filepath);
 
         // Step 1: Read source file
         let contents = fs::read_to_string(&self.filepath)
             .map_err(|e| CompilationError::IoError(format!("Failed to read file: {}", e)))?;
 
         // Step 2: Lexical analysis
-        println!("📝 Lexical analysis...");
+        println!("Lexical analysis...");
         self.lex_analysis(&contents)?;
 
         // Step 3: Parsing
-        println!("🌳 Parsing...");
+        println!("Parsing...");
         let ast = self.parse(&contents)?;
 
         // Step 4: Type checking
-        println!("🔍 Type checking...");
+        println!("Type checking...");
         let typed_ast = self.type_check(ast)?;
 
         // Step 5: IR generation
-        println!("⚡ Generating IR...");
+        println!("Generating IR...");
         let ir_module = self.generate_ir(typed_ast)?;
 
         // Step 6: LLVM codegen
-        println!("🔧 Generating LLVM IR...");
+        println!("Generating LLVM IR...");
         let llvm_output = self.generate_llvm_ir(ir_module)?;
 
         // Step 7: Compile to executable
-        println!("🏗️  Compiling to executable...");
+        println!("Compiling to executable...");
         let executable_path = self.compile_to_executable(&llvm_output)?;
 
-        println!("✅ Compilation successful! Output: {}", executable_path);
+        println!("âœ… Compilation successful! Output: {}", executable_path);
         Ok(executable_path)
     }
 
@@ -276,6 +276,7 @@ impl CompilationPipeline {
                 "-O3",   // Aggressive optimization during linking
                 "-no-pie",
                 "-lm",
+                "-lgc",
                 &runtime_path,
                 &object_path,
                 "-o",
@@ -358,7 +359,7 @@ impl CompilationPipeline {
         let min_time = times[0];
         let max_time = times[times.len() - 1];
 
-        println!("📊 Benchmark Results:");
+        println!(" Benchmark Results:");
         println!("  Average: {:?}", avg_time);
         println!("  Median:  {:?}", median_time);
         println!("  Min:     {:?}", min_time);
@@ -437,7 +438,7 @@ fn main() {
         .compile()
     {
         Ok(executable) => {
-            println!("✅ Compilation successful!");
+            println!("Compilation successful!");
             println!("Executable: {}", executable);
 
             // Benchmark if requested
@@ -456,14 +457,14 @@ fn main() {
 
             // Run once if requested
             if args.contains(&"--run".to_string()) {
-                println!("\n🏃 Running program:");
+                println!("\nRunning program:");
                 std::process::Command::new(&executable)
                     .status()
                     .expect("Failed to run executable");
             }
         }
         Err(e) => {
-            eprintln!("❌ Compilation failed: {}", e);
+            eprintln!("Compilation failed: {}", e);
             std::process::exit(1);
         }
     }

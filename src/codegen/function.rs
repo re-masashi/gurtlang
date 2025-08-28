@@ -76,7 +76,7 @@ impl<'ctx> LLVMCodegen<'ctx> {
             panic!("Function '{}' verification failed", function.name);
         }
 
-        println!("✅ Function '{}' verified successfully", function.name);
+        println!("Function '{}' verified successfully", function.name);
 
         self.current_function = None;
     }

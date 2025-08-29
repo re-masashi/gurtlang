@@ -1,11 +1,14 @@
 import time
 import sys
 
-def fib(n):
+def fib_helper(n: int, a: int, b: int):
     if n <= 1:
-        return n
+        return a
     else:
-        return fib(n - 1) + fib(n - 2)
+        return fib_helper(n - 1, b, a + b)
+
+def fib(n: int):
+    return fib_helper(n, 0, 1)
 
 if __name__ == "__main__":
     iterations = 1
